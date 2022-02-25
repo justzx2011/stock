@@ -129,7 +129,7 @@ def stat_all(tmp_datetime):
 
         print("################ tmp_datetime : " + datetime_str)
 
-        stock_dzjy_mrtj = ak.stock_dzjy_mrtj(start_date=datetime_str, end_date=datetime_str)
+        stock_dzjy_mrtj = ak.stock_dzjy_mrtj(start_date=datetime_int, end_date=datetime_int)
         print(stock_dzjy_mrtj)
 
         stock_dzjy_mrtj.columns = ['index', 'trade_date', 'code', 'name', 'quote_change', 'close_price', 'average_price',
