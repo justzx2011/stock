@@ -119,7 +119,7 @@ class GetStockDataHandler(webBase.BaseHandler):
             if search_idx == 0:
                 search_sql = " WHERE `%s` = '%s' " % (item, val)
             else:
-                search_sql = search_sql + " AND `%s` = '%s' " % (item, "%%"+val+"%%")
+                search_sql = search_sql + " AND `%s` like '%s' " % (item, "%%"+val+"%%")
             search_idx = search_idx + 1
 
         # print("stockWeb :", stock_web)
