@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import math
 import datetime
+import traceback
 import stockstats
 
 
@@ -37,7 +38,7 @@ def stat_all_lite_buy(tmp_datetime):
     except Exception as e:
         print("error :", e)
 
-    data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int])
+    data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int,))
     data = data.drop_duplicates(subset="code", keep="last")
     print("######## stat_all_lite_buy len data ########:", len(data))
 
@@ -72,7 +73,7 @@ def stat_all_lite_sell(tmp_datetime):
     except Exception as e:
         print("error :", e)
 
-    data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int])
+    data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int,))
     data = data.drop_duplicates(subset="code", keep="last")
     print("######## stat_all_lite_sell len data ########:", len(data))
 
@@ -104,8 +105,12 @@ def stat_all_batch(tmp_datetime):
     batch_size = 100
     end = int(math.ceil(float(count) / batch_size) * batch_size)
     print(end)
+    total_batches = end // batch_size
+    success_count = 0
+    fail_count = 0
     for i in range(0, end, batch_size):
-        print("loop :", i)
+        batch_num = i // batch_size + 1
+        print("[进度] 批次 %d/%d, 已成功:%d 失败:%d, offset:%d" % (batch_num, total_batches, success_count, fail_count, i))
         # 查询今日满足股票数据。剔除数据：创业板股票数据，中小板股票数据，所有st股票
         # #`code` not like '002%' and `code` not like '300%'  and `name` not like '%st%'
         sql_1 = """ 
@@ -115,10 +120,17 @@ def stat_all_batch(tmp_datetime):
                     """
         print(sql_1)
         # data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int, '002%', '300%', '%st%', i, batch_size])
-        data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int, i, batch_size])
-        data = data.drop_duplicates(subset="code", keep="last")
-        print("########data[latest_price]########:", len(data))
-        stat_index_all(data, i)
+        try:
+            data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int, i, batch_size))
+            data = data.drop_duplicates(subset="code", keep="last")
+            print("########data[latest_price]########:", len(data))
+            stat_index_all(data, i)
+            success_count += len(data)
+        except Exception as e:
+            fail_count += batch_size
+            print("[ERROR] 批次 %d 处理失败: %s" % (batch_num, e))
+            traceback.print_exc()
+    print("[完成] 总计 %d 只股票, 成功:%d, 失败:%d" % (count, success_count, fail_count))
 
 
 # 分批执行。
@@ -208,7 +220,7 @@ def stat_index_all(data, idx):
 
     stock_column = ['adx', 'adxr', 'boll', 'boll_lb', 'boll_ub', 'cci', 'cci_20', 'close_-1_r',
                     'close_-2_r', 'code', 'cr', 'cr-ma1', 'cr-ma2', 'cr-ma3', 'date', 'dma', 'dx',
-                    'kdjd', 'kdjj', 'kdjk', 'macd', 'macdh', 'macds', 'mdi', 'pdi',
+                    'kdjd', 'kdjj', 'kdjk', 'macd', 'macdh', 'macds', 'pdi',
                     'rsi_12', 'rsi_6', 'trix', 'trix_9_sma', 'vr', 'vr_6_sma', 'wr_10', 'wr_6']
     # code     cr cr-ma1 cr-ma2 cr-ma3      date
 
@@ -285,10 +297,10 @@ def apply_guess(tmp, stock_column):
     # print(stock.head())
     # open  high  close   low     volume
     # stock = pd.DataFrame({"close": stock["close"]}, index=stock.index.values)
-    stock = stock.sort_index(0)  # 将数据按照日期排序下。
+    stock = stock.sort_index()  # 将数据按照日期排序下。
 
     stock["date"] = stock.index.values  # 增加日期列。
-    stock = stock.sort_index(0)  # 将数据按照日期排序下。
+    stock = stock.sort_index()  # 将数据按照日期排序下。
     # print(stock) [186 rows x 14 columns]
     # 初始化统计类
     # stockStat = stockstats.StockDataFrame.retype(pd.read_csv('002032.csv'))

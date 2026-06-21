@@ -1,0 +1,51 @@
+networks:
+  stock-v2-network:
+    driver: bridge
+
+services:
+    stock:
+        image: pythonstock/backend-dev:latest
+        container_name: stock-v2
+        ports:
+            - "8888:8888"
+            - "9999:9999"
+        volumes:
+            - ".:/data/stock"
+            - "./supervisor:/data/supervisor"
+            - "./data/logs:/data/logs"
+            - "./jobs/cron.minutely:/etc/cron.minutely"
+            - "./jobs/cron.hourly:/etc/cron.hourly"
+            - "./jobs/cron.daily:/etc/cron.daily"
+            - "./jobs/cron.monthly:/etc/cron.monthly"
+        environment:
+            MYSQL_HOST: mysqldb
+            MYSQL_USER: root
+            MYSQL_PWD: mysqldb
+            MYSQL_DB: stock_data
+            LANG: zh_CN.UTF-8
+            LC_CTYPE: zh_CN.UTF-8
+            PYTHONIOENCODING: utf-8
+        restart: always
+        networks:
+            stock-v2-network: {}
+        depends_on:
+            - mysqldb
+    mysqldb:
+        image: mysql:8.0
+        container_name: mysqldb-v2
+        ports:
+            - "3307:3306"
+        volumes:
+            - "./data/mysqldb/data:/var/lib/mysql"
+        environment:
+            MYSQL_ROOT_PASSWORD: mysqldb
+            MYSQL_DATABASE: stock_data
+            TZ: Asia/Shanghai
+        command: [
+            '--character-set-server=utf8mb4',
+            '--collation-server=utf8mb4_general_ci',
+            '--max_connections=3000'
+        ]
+        restart: always
+        networks:
+            stock-v2-network: {}

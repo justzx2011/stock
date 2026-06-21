@@ -37,7 +37,7 @@ def stat_all_lite_buy(tmp_datetime):
     except Exception as e:
         print("error :", e)
 
-    data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int])
+    data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int,))
     data = data.drop_duplicates(subset="code", keep="last")
     print("######## len data ########:", len(data))
 
@@ -72,7 +72,7 @@ def stat_all_lite_sell(tmp_datetime):
     except Exception as e:
         print("error :", e)
 
-    data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int])
+    data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int,))
     data = data.drop_duplicates(subset="code", keep="last")
     print("######## len data ########:", len(data))
 
@@ -100,8 +100,8 @@ def stat_all_batch(tmp_datetime):
                  and `code` not like %s and `name` not like %s
     """
     # 修改逻辑，增加中小板块计算。 中小板：002，创业板：300 。and `code` not like %s and `code` not like %s and `name` not like %s
-    # count = common.select_count(sql_count, params=[datetime_int, '002%', '300%', '%st%'])
-    count = common.select_count(sql_count, params=[datetime_int, '300%', '%st%'])
+    # count = common.select_count(sql_count, params=(datetime_int, '002%', '300%', '%st%'))
+    count = common.select_count(sql_count, params=(datetime_int, '300%', '%st%'))
     print("count :", count)
     batch_size = 100
     end = int(math.ceil(float(count) / batch_size) * batch_size)
@@ -118,7 +118,7 @@ def stat_all_batch(tmp_datetime):
                     """
         print(sql_1)
         # data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int, '002%', '300%', '%st%', i, batch_size])
-        data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int, '300%', '%st%', i, batch_size])
+        data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int, '300%', '%st%', i, batch_size))
         data = data.drop_duplicates(subset="code", keep="last")
         print("########data[trade]########:", len(data))
         stat_index_all(data, i)
@@ -211,7 +211,7 @@ def stat_index_all(data, idx):
 
     stock_column = ['adx', 'adxr', 'boll', 'boll_lb', 'boll_ub', 'cci', 'cci_20', 'close_-1_r',
                     'close_-2_r', 'code', 'cr', 'cr-ma1', 'cr-ma2', 'cr-ma3', 'date', 'dma', 'dx',
-                    'kdjd', 'kdjj', 'kdjk', 'macd', 'macdh', 'macds', 'mdi', 'pdi',
+                    'kdjd', 'kdjj', 'kdjk', 'macd', 'macdh', 'macds', 'pdi',
                     'rsi_12', 'rsi_6', 'trix', 'trix_9_sma', 'vr', 'vr_6_sma', 'wr_10', 'wr_6']
     # code     cr cr-ma1 cr-ma2 cr-ma3      date
 
@@ -288,10 +288,10 @@ def apply_guess(tmp, stock_column):
     # print(stock.head())
     # open  high  close   low     volume
     # stock = pd.DataFrame({"close": stock["close"]}, index=stock.index.values)
-    stock = stock.sort_index(0)  # 将数据按照日期排序下。
+    stock = stock.sort_index()  # 将数据按照日期排序下。
 
     stock["date"] = stock.index.values  # 增加日期列。
-    stock = stock.sort_index(0)  # 将数据按照日期排序下。
+    stock = stock.sort_index()  # 将数据按照日期排序下。
     # print(stock) [186 rows x 14 columns]
     # 初始化统计类
     # stockStat = stockstats.StockDataFrame.retype(pd.read_csv('002032.csv'))
@@ -355,7 +355,7 @@ def stat_index_all_no_use(tmp_datetime):
                 and `code` not like %s and `code` not like %s and `name` not like %s
             """
     print(sql_1)
-    data = pd.read_sql(sql=sql_1, con=common.engine(), params=[datetime_int, '002%', '300%', '%st%'])
+    data = pd.read_sql(sql=sql_1, con=common.engine(), params=(datetime_int, '002%', '300%', '%st%'))
     data = data.drop_duplicates(subset="code", keep="last")
     print("########data[trade]########:", len(data))
     # print(data["trade"])
@@ -449,7 +449,7 @@ def stat_index_all_no_use(tmp_datetime):
     # 平均方向指数评估（ADXR）实际是今日ADX与前面某一日的ADX的平均值。ADXR在高位与ADX同步下滑，可以增加对ADX已经调头的尽早确认。
     # ADXR是ADX的附属产品，只能发出一种辅助和肯定的讯号，并非入市的指标，而只需同时配合动向指标(DMI)的趋势才可作出买卖策略。
     # 在应用时，应以ADX为主，ADXR为辅。
-    stock_column = ['adx', 'adxr', 'code', 'date', 'dx', 'mdi',
+    stock_column = ['adx', 'adxr', 'code', 'date', 'dx', 
                     'pdi']  # adx   adxr    code      date     dx    mdi    pdi
     data_new = concat_guess_data(stock_column, data_new)
 

@@ -20,8 +20,8 @@ echo "###################"$DATETIME"###################" >> /data/logs/daily.${D
 #使用股票指标预测。
 /usr/local/bin/python3 /data/stock/jobs/guess_indicators_daily_job.py >> /data/logs/daily.${DATE}.log
 
-#清除前3天数据。
+#清除前20天数据。
 DATE_20=`date -d '-20 days' +%Y-%m-%d`
 MONTH_20=`date -d '-20 days' +%Y-%m`
-echo "rm -f /data/cache/hist_data_cache/${MONTH_20}/${DATETIME_20}"
-rm -f /data/cache/hist_data_cache/${MONTH_20}/${DATETIME_20}
+echo "rm -f /data/cache/hist_data_cache/${MONTH_20}/${DATE_20}"
+rm -f /data/cache/hist_data_cache/${MONTH_20}/${DATE_20}

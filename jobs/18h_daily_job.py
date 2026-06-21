@@ -11,8 +11,7 @@ from sqlalchemy.types import NVARCHAR
 from sqlalchemy import inspect
 import datetime
 import akshare as ak
-
-import MySQLdb
+import traceback
 
 # 600开头的股票是上证A股，属于大盘股
 # 600开头的股票是上证A股，属于大盘股，其中6006开头的股票是最早上市的股票，
@@ -56,15 +55,27 @@ def stat_all(tmp_datetime):
     print("datetime_str:", datetime_str)
     print("datetime_int:", datetime_int)
 
-    # 股票列表
+    # 股票列表 - 使用新浪 API（避免东方财富限流）
     try:
-        data = ak.stock_zh_a_spot_em()
-        # print(data.index)
-        # 解决ESP 小数问题。
-        # data["esp"] = data["esp"].round(2)  # 数据保留2位小数
-        data.columns = ['index', 'code', 'name', 'latest_price', 'quote_change', 'ups_downs', 'volume', 'turnover',
-                        'amplitude', 'high', 'low', 'open', 'closed', 'quantity_ratio', 'turnover_rate', 'pe_dynamic',
-                        'pb']
+        print("[数据源] 使用 ak.stock_zh_a_spot() (新浪)")
+        data = ak.stock_zh_a_spot()
+        # 新浪返回的列: ['代码', '名称', '最新价', '涨跌额', '涨跌幅', '买入', '卖出', '昨收', '今开', '最高', '最低', '成交量', '成交额', '时间戳']
+        # 映射到老版本期望的列名
+        data = data.rename(columns={
+            '代码': 'code', '名称': 'name', '最新价': 'latest_price',
+            '涨跌额': 'ups_downs', '涨跌幅': 'quote_change',
+            '成交量': 'volume', '成交额': 'turnover',
+            '最高': 'high', '最低': 'low', '今开': 'open', '昨收': 'closed'
+        })
+        # 代码去掉市场前缀 (sh600519 → 600519, sz000001 → 000001)
+        data['code'] = data['code'].str.replace(r'^(sh|sz|bj)', '', regex=True)
+
+        # 补充缺失列（新浪 API 不提供这些字段，用默认值）
+        data['amplitude'] = ((data['high'] - data['low']) / data['closed'] * 100).round(2)
+        data['quantity_ratio'] = 0.0
+        data['turnover_rate'] = 0.0
+        data['pe_dynamic'] = 0.0
+        data['pb'] = 0.0
 
         data = data.loc[data["code"].apply(stock_a)].loc[data["name"].apply(stock_a_filter_st)].loc[
             data["latest_price"].apply(stock_a_filter_price)]
@@ -76,12 +87,16 @@ def stat_all(tmp_datetime):
         common.insert(del_sql)
 
         data.set_index('code', inplace=True)
-        data.drop('index', axis=1, inplace=True)
+        # 只保留需要的列
+        keep_cols = ['name', 'latest_price', 'quote_change', 'ups_downs', 'volume', 'turnover',
+                     'amplitude', 'high', 'low', 'open', 'closed', 'quantity_ratio', 'turnover_rate',
+                     'pe_dynamic', 'pb', 'date']
+        data = data[[c for c in keep_cols if c in data.columns]]
         print(data)
-        # 删除index，然后和原始数据合并。
         common.insert_db(data, "stock_zh_ah_name", True, "`date`,`code`")
     except Exception as e:
         print("error :", e)
+        traceback.print_exc()
 
 
 
@@ -94,7 +109,7 @@ def stat_all(tmp_datetime):
     #
 
     try:
-        stock_sina_lhb_ggtj = ak.stock_sina_lhb_ggtj(recent_day="5")
+        stock_sina_lhb_ggtj = ak.stock_lhb_ggtj_sina(symbol="5")
         print(stock_sina_lhb_ggtj)
 
         stock_sina_lhb_ggtj.columns = ['code', 'name', 'ranking_times', 'sum_buy', 'sum_sell', 'net_amount', 'buy_seat',

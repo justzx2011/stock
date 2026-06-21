@@ -8,8 +8,11 @@ import datetime
 import time
 import sys
 import os
+import re
+import json
+import urllib.request
 import MySQLdb
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text as sql_text
 from sqlalchemy.types import NVARCHAR
 from sqlalchemy import inspect
 import pandas as pd
@@ -30,16 +33,12 @@ __version__ = "2.0.0"
 # 每次发布时候更新。
 
 def engine():
-    engine = create_engine(
-        MYSQL_CONN_URL,
-        encoding='utf8', convert_unicode=True)
+    engine = create_engine(MYSQL_CONN_URL, pool_size=10, max_overflow=20)
     return engine
 
 def engine_to_db(to_db):
     MYSQL_CONN_URL_NEW = "mysql+mysqldb://" + MYSQL_USER + ":" + MYSQL_PWD + "@" + MYSQL_HOST + ":3306/" + to_db + "?charset=utf8mb4"
-    engine = create_engine(
-        MYSQL_CONN_URL_NEW,
-        encoding='utf8', convert_unicode=True)
+    engine = create_engine(MYSQL_CONN_URL_NEW, pool_size=10, max_overflow=20)
     return engine
 
 # 通过数据库链接 engine。
@@ -83,7 +82,8 @@ def insert_other_db(to_db, data, table_name, write_index, primary_keys):
         with engine_mysql.connect() as con:
             # 执行数据库插入数据。
             try:
-                con.execute('ALTER TABLE `%s` ADD PRIMARY KEY (%s);' % (table_name, primary_keys))
+                con.execute(sql_text('ALTER TABLE `%s` ADD PRIMARY KEY (%s);' % (table_name, primary_keys)))
+                con.commit()
             except  Exception as e:
                 print("################## ADD PRIMARY KEY ERROR :", e)
 
@@ -183,11 +183,113 @@ if not os.path.exists(bash_stock_tmp):
     print("######################### init tmp dir #########################")
 
 
-# 增加读取股票缓存方法。加快处理速度。
+# ============================================================================
+# 限流控制：避免东方财富 API 反爬限流
+# ============================================================================
+_last_request_time = 0
+_REQUEST_INTERVAL = 1.5        # 每次请求间隔（秒）
+_BATCH_PAUSE_EVERY = 15        # 每 N 次请求暂停一次
+_BATCH_PAUSE_SECONDS = 3       # 暂停秒数
+_request_count = 0
+
+
+def _rate_limit():
+    """内置限流：固定间隔 + 定期暂停，防止触发东方财富反爬机制"""
+    global _last_request_time, _request_count
+    now = time.time()
+    elapsed = now - _last_request_time
+    if elapsed < _REQUEST_INTERVAL:
+        time.sleep(_REQUEST_INTERVAL - elapsed)
+    _request_count += 1
+    if _request_count % _BATCH_PAUSE_EVERY == 0:
+        print("[rate_limit] 已请求 %d 次，暂停 %ds ..." % (_request_count, _BATCH_PAUSE_SECONDS))
+        time.sleep(_BATCH_PAUSE_SECONDS)
+    _last_request_time = time.time()
+
+
+def _gp_type_szsh(gp):
+    """根据股票代码判断市场前缀（内部辅助函数）"""
+    if gp.find('60', 0, 3) == 0 or gp.find('688', 0, 4) == 0 or gp.find('900', 0, 4) == 0:
+        return 'sh'
+    elif gp.find('00', 0, 3) == 0 or gp.find('300', 0, 4) == 0 or gp.find('200', 0, 4) == 0:
+        return 'sz'
+    return 'sh'
+
+
+def _fetch_kline_sina(code, date_start, date_end):
+    """从新浪 API 获取日 K 线数据（替代东方财富，无严格限流）
+
+    返回格式与老版本 ak.stock_zh_a_hist() 兼容：
+    index=date, columns=['open','close','high','low','volume','amount',
+                         'amplitude','quote_change','ups_downs','turnover']
+    """
+    prefix = _gp_type_szsh(code)
+    symbol = prefix + code
+    url = (
+        "https://quotes.sina.cn/cn/api/jsonp.php/var%%20_%s=/"
+        "CN_MarketDataService.getKLineData"
+        "?symbol=%s&scale=240&ma=no&datalen=200"
+    ) % (symbol, symbol)
+
+    _rate_limit()
+
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (compatible)',
+            'Referer': 'https://finance.sina.com.cn'
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode('utf-8')
+
+        match = re.search(r"\((\[.*?\])\)", raw, re.DOTALL)
+        if not match:
+            print("[Sina API] %s 返回数据为空" % code)
+            return None
+
+        data = json.loads(match.group(1))
+        df = pd.DataFrame(data)
+
+        # 统一列名
+        df = df.rename(columns={'day': 'date'})
+        for col in ['open', 'high', 'low', 'close']:
+            df[col] = df[col].astype(float)
+        df['volume'] = df['volume'].astype(float)
+
+        # 日期过滤
+        df['date'] = pd.to_datetime(df['date'])
+        date_start_dt = pd.to_datetime(date_start)
+        date_end_dt = pd.to_datetime(date_end)
+        df = df[(df['date'] >= date_start_dt) & (df['date'] <= date_end_dt)]
+
+        if df.empty:
+            return None
+
+        # 补充老版本 ak.stock_zh_a_hist() 返回的额外列（stockstats 不用，但保持兼容）
+        df['amount'] = 0.0
+        df['amplitude'] = ((df['high'] - df['low']) / df['close'] * 100).round(2)
+        df['quote_change'] = 0.0
+        df['ups_downs'] = 0.0
+        df['turnover'] = 0.0
+
+        # 计算涨跌幅
+        df['quote_change'] = df['close'].pct_change().apply(lambda x: round(x * 100, 2) if pd.notna(x) else 0)
+        df['ups_downs'] = df['close'].diff().round(2)
+
+        df = df.set_index('date')
+        # 返回与老版本兼容的列顺序
+        return df[['open', 'close', 'high', 'low', 'volume', 'amount',
+                    'amplitude', 'quote_change', 'ups_downs', 'turnover']]
+
+    except Exception as e:
+        print("[Sina API] 获取 %s 失败: %s" % (code, e))
+        return None
+
+
+# ============================================================================
+# K 线数据获取（带缓存 + 新浪优先 + AkShare 降级）
+# ============================================================================
 def get_hist_data_cache(code, date_start, date_end):
     cache_dir = bash_stock_tmp % (date_end[0:7], date_end)
-    # 如果没有文件夹创建一个。月文件夹和日文件夹。方便删除。
-    # print("cache_dir:", cache_dir)
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
     cache_file = cache_dir + "%s^%s.gzip.pickle" % (date_end, code)
@@ -195,14 +297,30 @@ def get_hist_data_cache(code, date_start, date_end):
     if os.path.isfile(cache_file):
         print("######### read from cache #########", cache_file)
         return pd.read_pickle(cache_file, compression="gzip")
-    else:
-        print("######### get data, write cache #########", code, date_start, date_end)
-        stock = ak.stock_zh_a_hist(symbol= code, start_date=date_start, end_date=date_end, adjust="")
-        stock.columns = ['date', 'open', 'close', 'high', 'low', 'volume', 'amount', 'amplitude', 'quote_change',
-                         'ups_downs', 'turnover']
+
+    # ====== 缓存未命中：优先使用新浪 API（无限流），失败降级到 AkShare ======
+
+    # 方式 1：新浪 API（推荐，无严格限流）
+    print("######### [Sina] get data, write cache #########", code, date_start, date_end)
+    try:
+        stock = _fetch_kline_sina(code, date_start, date_end)
+        if stock is not None and not stock.empty:
+            stock.to_pickle(cache_file, compression="gzip")
+            return stock
+    except Exception as e:
+        print("[Sina fallback] %s 异常: %s" % (code, e))
+
+    # 方式 2：AkShare 东方财富 API（降级兜底，有限流风险）
+    print("######### [AkShare fallback] get data #########", code, date_start, date_end)
+    try:
+        stock = ak.stock_zh_a_hist(symbol=code, start_date=date_start, end_date=date_end, adjust="")
+        stock.columns = ['date', 'open', 'close', 'high', 'low', 'volume', 'amount',
+                         'amplitude', 'quote_change', 'ups_downs', 'turnover']
         if stock is None:
             return None
-        stock = stock.sort_index(0)  # 将数据按照日期排序下。
-        print(stock)
+        stock = stock.sort_index()
         stock.to_pickle(cache_file, compression="gzip")
         return stock
+    except Exception as e:
+        print("[AkShare] %s 获取失败: %s" % (code, e))
+        return None
