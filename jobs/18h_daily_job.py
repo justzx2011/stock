@@ -21,10 +21,9 @@ import traceback
 # 200开头的股票是深证B股；
 # 300开头的股票是创业板股票；400开头的股票是三板市场股票。
 def stock_a(code):
-    # print(code)
-    # print(type(code))
-    # 上证A股  # 深证A股
-    if code.startswith('600') or code.startswith('6006') or code.startswith('601') or code.startswith('000') or code.startswith('001') or code.startswith('002'):
+    # 包含全部 A 股：沪主板(600/601/603)、深主板(000/001/003)、中小板(002)、创业板(300/301)、科创板(688)、北交所(8/9/4)
+    if (code.startswith('6') or code.startswith('0') or code.startswith('3') or
+        code.startswith('8') or code.startswith('9') or code.startswith('4')):
         return True
     else:
         return False

@@ -337,8 +337,8 @@ def add_plot(stockStat, conf):
 
         # Set date format for x axis 格式化。
         p1.xaxis.formatter = DatetimeTickFormatter(
-            hours=["%Y-%m-%d"], days=["%Y-%m-%d"],
-            months=["%Y-%m-%d"], years=["%Y-%m-%d"])
+            hours="%Y-%m-%d", days="%Y-%m-%d",
+            months="%Y-%m-%d", years="%Y-%m-%d")
         # p1.xaxis.major_label_orientation = radians(30) #可以旋转一个角度。
 
         p_list.append([p1])
