@@ -207,13 +207,18 @@ def _rate_limit():
     _last_request_time = time.time()
 
 
-def _gp_type_szsh(gp):
-    """根据股票代码判断市场前缀（内部辅助函数）"""
+def gp_type_szsh(gp):
+    """根据股票代码判断市场前缀（公开接口，供外部调用）"""
     if gp.find('60', 0, 3) == 0 or gp.find('688', 0, 4) == 0 or gp.find('900', 0, 4) == 0:
         return 'sh'
     elif gp.find('00', 0, 3) == 0 or gp.find('300', 0, 4) == 0 or gp.find('200', 0, 4) == 0:
         return 'sz'
+    elif gp.find('8', 0, 1) == 0 or gp.find('9', 0, 1) == 0 or gp.find('4', 0, 1) == 0:
+        return 'bj'
     return 'sh'
+
+# 内部别名（兼容旧代码）
+_gp_type_szsh = gp_type_szsh
 
 
 def _fetch_kline_sina(code, date_start, date_end):
