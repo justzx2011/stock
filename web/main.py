@@ -13,6 +13,8 @@ import libs.stock_web_dic as stock_web_dic
 import web.dataTableHandler as dataTableHandler
 import web.dataEditorHandler as dataEditorHandler
 import web.dataIndicatorsHandler as dataIndicatorsHandler
+import web.morningReportHandler as morningReportHandler
+import web.eveningReportHandler as eveningReportHandler
 import web.base as webBase
 import pandas as pd
 import numpy as np
@@ -35,6 +37,16 @@ class Application(tornado.web.Application):
             (r"/data/editor/save", dataEditorHandler.SaveEditorHandler),
             # 获得股票指标数据。
             (r"/stock/data/indicators", dataIndicatorsHandler.GetDataIndicatorsHandler),
+            # A股选股晨报。
+            (r"/stock/report", morningReportHandler.MorningReportListHandler),
+            (r"/stock/report/api", morningReportHandler.MorningReportApiHandler),
+            (r"/stock/report/detail", morningReportHandler.MorningReportDetailHandler),
+            (r"/stock/report/generate", morningReportHandler.MorningReportGenerateHandler),
+            # 尾盘选股报告。
+            (r"/stock/evening_report", eveningReportHandler.EveningReportListHandler),
+            (r"/stock/evening_report/api", eveningReportHandler.EveningReportApiHandler),
+            (r"/stock/evening_report/detail", eveningReportHandler.EveningReportDetailHandler),
+            (r"/stock/evening_report/generate", eveningReportHandler.EveningReportGenerateHandler),
         ]
         settings = dict(  # 配置
             template_path=os.path.join(os.path.dirname(__file__), "templates"),

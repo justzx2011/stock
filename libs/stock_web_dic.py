@@ -15,6 +15,11 @@ class StockWebData:
             self.url = "/stock/data?table_name=" + self.table_name
         elif mode == "editor":
             self.url = "/data/editor?table_name=" + self.table_name
+        elif mode == "report":
+            if table_name == "stock_evening_report":
+                self.url = "/stock/evening_report"
+            else:
+                self.url = "/stock/report?name=" + self.table_name
 
 
 STOCK_WEB_DATA_LIST = []
@@ -124,6 +129,34 @@ STOCK_WEB_DATA_LIST.append(
                     'rsi_12', 'rsi_6', 'trix', 'trix_9_sma', 'vr', 'vr_6_sma', 'wr_10', 'wr_6'],
         primary_key=[],
         order_by=' date desc  '
+    )
+)
+
+# A股选股晨报
+STOCK_WEB_DATA_LIST.append(
+    StockWebData(
+        mode="report",
+        type="3，定时任务",
+        name="A股选股晨报",
+        table_name="stock_morning_report",
+        columns=['id', 'date', 'created_at'],
+        column_names=['ID', '日期', '创建时间'],
+        primary_key=['id'],
+        order_by=" date desc "
+    )
+)
+
+# 尾盘选股报告
+STOCK_WEB_DATA_LIST.append(
+    StockWebData(
+        mode="report",
+        type="3，定时任务",
+        name="尾盘选股报告",
+        table_name="stock_evening_report",
+        columns=['id', 'date', 'created_at'],
+        column_names=['ID', '日期', '创建时间'],
+        primary_key=['id'],
+        order_by=" date desc "
     )
 )
 

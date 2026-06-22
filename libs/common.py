@@ -106,10 +106,11 @@ def select(sql, params=()):
         print("select sql:" + sql)
         try:
             db.execute(sql, params)
+            result = db.fetchall()
+            return result
         except  Exception as e:
             print("error :", e)
-        result = db.fetchall()
-        return result
+            return []
 
 
 # 计算数量
