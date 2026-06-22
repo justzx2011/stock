@@ -119,13 +119,14 @@ def select_count(sql, params=()):
         print("select sql:" + sql)
         try:
             db.execute(sql, params)
+            result = db.fetchall()
+            # 只有一个数组中的第一个数据
+            if len(result) == 1:
+                return int(result[0][0])
+            else:
+                return 0
         except  Exception as e:
             print("error :", e)
-        result = db.fetchall()
-        # 只有一个数组中的第一个数据
-        if len(result) == 1:
-            return int(result[0][0])
-        else:
             return 0
 
 
