@@ -25,5 +25,10 @@ printenv | grep -v "no_proxy" >> /etc/environment
 # 第一次后台执行日数据。
 nohup bash /data/stock/jobs/cron.daily/run_daily &
 
+# 注册定时任务
+chmod +x /data/stock/jobs/cron.9h/run_morning_report
+chmod +x /data/stock/jobs/cron.14h/run_evening_report
+echo "28 9 * * 1-5 bash /data/stock/jobs/cron.9h/run_morning_report\n50 14 * * 1-5 bash /data/stock/jobs/cron.14h/run_evening_report" | crontab -
+
 #启动cron服务。在前台
 /usr/sbin/cron -f

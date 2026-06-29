@@ -1,0 +1,14 @@
+#!/bin/sh
+
+mkdir -p /data/logs
+DATETIME=`date +%Y-%m-%d:%H:%M:%S`
+DATE=`date +%Y-%m-%d`
+
+export PYTHONIOENCODING=utf-8
+export LANG=zh_CN.UTF-8
+export PYTHONPATH=/data/stock
+export LC_CTYPE=zh_CN.UTF-8
+
+echo "###################"$DATETIME"###################" >> /data/logs/morning_report.${DATE}.log
+#A股选股晨报（9:28执行，分析前一交易日数据）
+/usr/local/bin/python3 /data/stock/jobs/morning_report_job.py >> /data/logs/morning_report.${DATE}.log

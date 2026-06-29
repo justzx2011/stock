@@ -20,13 +20,9 @@ echo "###################"$DATETIME"###################" >> /data/logs/daily.${D
 #使用股票指标预测。
 /usr/local/bin/python3 /data/stock/jobs/guess_indicators_daily_job.py >> /data/logs/daily.${DATE}.log
 
-echo "###################"$DATETIME"###################" >> /data/logs/daily.${DATE}.log
-#A股选股晨报。
-/usr/local/bin/python3 /data/stock/jobs/morning_report_job.py >> /data/logs/daily.${DATE}.log
 
-echo "###################"$DATETIME"###################" >> /data/logs/daily.${DATE}.log
-#尾盘选股报告。
-/usr/local/bin/python3 /data/stock/jobs/evening_report_job.py >> /data/logs/daily.${DATE}.log
+
+
 
 #清除前20天数据。
 DATE_20=`date -d '-20 days' +%Y-%m-%d`
