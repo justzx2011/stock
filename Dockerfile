@@ -33,9 +33,12 @@ ADD jobs/cron.minutely /etc/cron.minutely
 ADD jobs/cron.hourly /etc/cron.hourly
 ADD jobs/cron.daily /etc/cron.daily
 ADD jobs/cron.monthly /etc/cron.monthly
+ADD jobs/cron.9h /data/stock/jobs/cron.9h
+ADD jobs/cron.14h /data/stock/jobs/cron.14h
 
 RUN mkdir -p /data/logs && ls /data/stock/ && chmod 755 /data/stock/jobs/run_* &&  \
     chmod 755 /etc/cron.minutely/* && chmod 755 /etc/cron.hourly/* && \
-    chmod 755 /etc/cron.daily/* && chmod 755 /etc/cron.monthly/*
+    chmod 755 /etc/cron.daily/* && chmod 755 /etc/cron.monthly/* && \
+    chmod 755 /data/stock/jobs/cron.9h/* && chmod 755 /data/stock/jobs/cron.14h/*
 
 ENTRYPOINT ["supervisord","-n","-c","/data/supervisor/supervisord.conf"]
