@@ -15,6 +15,7 @@ import web.dataEditorHandler as dataEditorHandler
 import web.dataIndicatorsHandler as dataIndicatorsHandler
 import web.morningReportHandler as morningReportHandler
 import web.eveningReportHandler as eveningReportHandler
+import web.aiAgentHandler as aiAgentHandler
 import web.base as webBase
 import pandas as pd
 import numpy as np
@@ -47,6 +48,11 @@ class Application(tornado.web.Application):
             (r"/stock/evening_report/api", eveningReportHandler.EveningReportApiHandler),
             (r"/stock/evening_report/detail", eveningReportHandler.EveningReportDetailHandler),
             (r"/stock/evening_report/generate", eveningReportHandler.EveningReportGenerateHandler),
+            # AI 数据分析师。
+            (r"/stock/ai_agent", aiAgentHandler.AiAgentPageHandler),
+            (r"/stock/ai_agent/chat", aiAgentHandler.AiAgentChatHandler),
+            (r"/stock/ai_agent/config", aiAgentHandler.AiAgentConfigHandler),
+            (r"/stock/ai_agent/test", aiAgentHandler.AiAgentTestHandler),
         ]
         settings = dict(  # 配置
             template_path=os.path.join(os.path.dirname(__file__), "templates"),

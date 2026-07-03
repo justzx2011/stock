@@ -1,0 +1,396 @@
+{% extends "layout/default.html" %}
+
+{% block main_content %}
+
+<style>
+.chat-container { display: flex; flex-direction: column; height: calc(100vh - 180px); }
+.chat-messages { flex: 1; overflow-y: auto; padding: 15px; background: #f5f5f5; border-radius: 4px; margin-bottom: 10px; }
+.msg-row { margin-bottom: 12px; display: flex; align-items: flex-start; }
+.msg-row.user { justify-content: flex-end; }
+.msg-row.ai { justify-content: flex-start; }
+.msg-bubble { max-width: 85%; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; word-wrap: break-word; }
+.msg-bubble.user-bubble { background: #438eb9; color: #fff; border-bottom-right-radius: 2px; }
+.msg-bubble.ai-bubble { background: #fff; border: 1px solid #ddd; border-bottom-left-radius: 2px; }
+.msg-bubble pre { background: #2d2d2d; color: #f8f8f2; padding: 8px 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin: 6px 0; }
+.msg-bubble table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.msg-bubble table th, .msg-bubble table td { border: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+.msg-bubble table th { background: #438eb9; color: #fff; }
+.msg-bubble table tr:nth-child(even) { background: #f9f9f9; }
+.chat-input-bar { display: flex; gap: 8px; }
+.chat-input-bar input { flex: 1; height: 40px; padding: 0 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+.chat-input-bar button { height: 40px; padding: 0 20px; }
+.quick-tags { margin-bottom: 10px; }
+.quick-tags .btn { margin-right: 5px; margin-bottom: 5px; }
+.settings-panel { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 10px; display: none; }
+.settings-panel.active { display: block; }
+.settings-panel .form-group { margin-bottom: 8px; }
+.settings-panel label { width: 80px; display: inline-block; }
+.settings-panel input { width: 300px; height: 32px; padding: 0 8px; border: 1px solid #ccc; border-radius: 3px; }
+.typing-indicator { color: #999; font-style: italic; padding: 5px 0; }
+.data-table-wrapper { max-height: 300px; overflow: auto; margin: 8px 0; }
+.btn-star { background: none; border: none; cursor: pointer; font-size: 16px; color: #ccc; padding: 2px 6px; margin-left: 6px; vertical-align: top; }
+.btn-star:hover, .btn-star.starred { color: #f0ad4e; }
+.fav-panel { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px 15px; margin-bottom: 10px; display: none; max-height: 250px; overflow-y: auto; }
+.fav-panel.active { display: block; }
+.fav-item { padding: 6px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.fav-item:last-child { border-bottom: none; }
+.fav-q { flex: 1; cursor: pointer; color: #438eb9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+.fav-q:hover { text-decoration: underline; }
+.fav-time { color: #999; font-size: 11px; margin-right: 8px; white-space: nowrap; }
+.fav-del { color: #d9534f; cursor: pointer; font-size: 12px; padding: 0 4px; }
+.fav-del:hover { color: #c9302c; }
+.fav-empty { color: #999; text-align: center; padding: 15px; }
+.fav-badge { background: #f0ad4e; color: #fff; font-size: 10px; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
+</style>
+
+<h3 class="header smaller lighter blue">
+    <i class="fa fa-robot"></i> AI 数据分析师
+    <button class="btn btn-xs btn-default pull-right" id="btn-settings" style="margin-top: 5px;">
+        <i class="fa fa-cog"></i> 设置
+    </button>
+    <button class="btn btn-xs btn-default pull-right" id="btn-favorites" style="margin-top: 5px; margin-right: 5px;">
+        <i class="fa fa-star"></i> 收藏<span class="fav-badge" id="fav-count" style="display:none;">0</span>
+    </button>
+</h3>
+
+<!-- 设置面板 -->
+<div class="settings-panel" id="settings-panel">
+    <div class="form-group">
+        <label>API Token:</label>
+        <input type="password" id="cfg-token" placeholder="输入火山引擎 API Token" />
+    </div>
+    <div class="form-group">
+        <label>模型名称:</label>
+        <input type="text" id="cfg-model" placeholder="如 ep-xxxxx" value="{{ model_name }}" />
+    </div>
+    <div class="form-group">
+        <label>API 地址:</label>
+        <input type="text" id="cfg-url" value="https://ark.cn-beijing.volces.com/api/plan/v3/chat/completions" />
+    </div>
+    <button class="btn btn-sm btn-primary" id="btn-save-config">保存配置</button>
+    <button class="btn btn-sm btn-success" id="btn-test-conn" style="margin-left: 5px;">检测连接</button>
+    <span id="config-status" style="margin-left: 10px; color: #999;"></span>
+</div>
+
+<!-- 收藏面板 -->
+<div class="fav-panel" id="fav-panel"></div>
+
+<div class="chat-container">
+    <!-- 快捷提问 -->
+    <div class="quick-tags">
+        <button class="btn btn-xs btn-info quick-q" data-q="今日涨停的股票有哪些？">今日涨停</button>
+        <button class="btn btn-xs btn-info quick-q" data-q="最近一天KDJ超买（J值>100）的股票TOP10">KDJ超买</button>
+        <button class="btn btn-xs btn-info quick-q" data-q="最近一天两市成交额前20的股票">成交额TOP20</button>
+        <button class="btn btn-xs btn-info quick-q" data-q="最近一天跌幅超过5%的股票">跌幅榜</button>
+        <button class="btn btn-xs btn-info quick-q" data-q="查看最新的尾盘选股报告">最新尾盘报告</button>
+        <button class="btn btn-xs btn-warning quick-q" data-q="龙虎榜上榜次数最多的股票">龙虎榜</button>
+    </div>
+
+    <!-- 消息区 -->
+    <div class="chat-messages" id="chat-messages">
+        <div class="msg-row ai">
+            <div class="msg-bubble ai-bubble">
+                <strong>AI 数据分析师</strong><br>
+                你好！我可以通过自然语言帮你查询和分析股票数据。<br>
+                例如：「最近涨幅最大的10只股票」「KDJ超买的股票有哪些」<br>
+                {% if not has_token %}
+                <span style="color: #d9534f;">提示：请先点击右上角"设置"配置 API Token。</span>
+                {% end %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="chat-input-bar">
+        <input type="text" id="chat-input" placeholder="输入你的问题，如：最近5天涨幅最大的股票..." autocomplete="off" />
+        <button class="btn btn-primary" id="btn-send"><i class="fa fa-paper-plane"></i> 发送</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+var MAX_HISTORY = 20; // 最近10轮 = 20条消息
+var chatHistory = [];
+var favorites = JSON.parse(localStorage.getItem('ai_agent_favs') || '[]');
+
+// === 收藏管理 ===
+function saveFavs() {
+    localStorage.setItem('ai_agent_favs', JSON.stringify(favorites));
+    renderFavBadge();
+}
+
+function renderFavBadge() {
+    var n = favorites.length;
+    if (n > 0) {
+        $('#fav-count').text(n).show();
+    } else {
+        $('#fav-count').hide();
+    }
+}
+
+function addFavorite(question, sql, analysis) {
+    // 去重：同一问题不重复收藏
+    for (var i = 0; i < favorites.length; i++) {
+        if (favorites[i].question === question) return;
+    }
+    favorites.unshift({
+        question: question,
+        sql: sql || '',
+        analysis: analysis || '',
+        time: new Date().toLocaleString('zh-CN')
+    });
+    saveFavs();
+}
+
+function removeFavorite(idx) {
+    favorites.splice(idx, 1);
+    saveFavs();
+    renderFavPanel();
+}
+
+function renderFavPanel() {
+    var html = '';
+    if (favorites.length === 0) {
+        html = '<div class="fav-empty">暂无收藏</div>';
+    } else {
+        for (var i = 0; i < favorites.length; i++) {
+            var f = favorites[i];
+            html += '<div class="fav-item">';
+            html += '<span class="fav-q" data-idx="' + i + '" title="' + f.question + '">' + f.question + '</span>';
+            html += '<span class="fav-time">' + (f.time || '') + '</span>';
+            html += '<span class="fav-del" data-idx="' + i + '" title="删除"><i class="fa fa-trash-o"></i></span>';
+            html += '</div>';
+        }
+    }
+    $('#fav-panel').html(html);
+}
+
+// === 聊天核心 ===
+function addMessage(role, html) {
+    var cls = role === 'user' ? 'user' : 'ai';
+    var bubbleCls = role === 'user' ? 'user-bubble' : 'ai-bubble';
+    var row = $('<div class="msg-row ' + cls + '"><div class="msg-bubble ' + bubbleCls + '">' + html + '</div></div>');
+    $('#chat-messages').append(row);
+    $('#chat-messages').scrollTop($('#chat-messages')[0].scrollHeight);
+    return row;
+}
+
+function buildTable(columns, rows) {
+    if (!columns || !rows || rows.length === 0) return '<p style="color:#999;">无数据</p>';
+    var html = '<div class="data-table-wrapper"><table><thead><tr>';
+    columns.forEach(function(c) { html += '<th>' + c + '</th>'; });
+    html += '</tr></thead><tbody>';
+    rows.forEach(function(row) {
+        html += '<tr>';
+        row.forEach(function(v) {
+            html += '<td>' + (v === null ? '-' : v) + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '<small style="color:#999;">共 ' + rows.length + ' 行</small>';
+    return html;
+}
+
+function renderMarkdown(text) {
+    try {
+        if (typeof marked !== 'undefined') {
+            return marked.parse(text);
+        }
+    } catch(e) {}
+    return '<pre>' + text + '</pre>';
+}
+
+function trimHistory() {
+    // 保留最近 MAX_HISTORY 条
+    if (chatHistory.length > MAX_HISTORY) {
+        chatHistory = chatHistory.slice(chatHistory.length - MAX_HISTORY);
+    }
+}
+
+function sendQuestion(question) {
+    if (!question.trim()) return;
+
+    addMessage('user', question);
+    var loading = addMessage('ai', '<span class="typing-indicator">正在思考中...</span>');
+
+    chatHistory.push({ role: 'user', content: question });
+    trimHistory();
+
+    $.ajax({
+        url: '/stock/ai_agent/chat',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ message: question, history: chatHistory }),
+        dataType: 'json',
+        timeout: 120000,
+        success: function(resp) {
+            var html = '';
+
+            if (resp.error) {
+                html += '<div style="color:#d9534f;"><i class="fa fa-exclamation-triangle"></i> ' + resp.error + '</div>';
+            }
+
+            if (resp.sql) {
+                html += '<div><strong>SQL:</strong><pre>' + resp.sql + '</pre></div>';
+            }
+
+            if (resp.columns && resp.rows) {
+                html += '<div><strong>查询结果:</strong>' + buildTable(resp.columns, resp.rows) + '</div>';
+            }
+
+            if (resp.analysis) {
+                html += '<div><strong>分析:</strong><br>' + renderMarkdown(resp.analysis) + '</div>';
+            }
+
+            if (!html) {
+                html = '<span style="color:#999;">未获得有效结果</span>';
+            }
+
+            // 添加收藏按钮
+            var starId = 'star-' + Date.now();
+            html += '<button class="btn-star" id="' + starId + '" data-q="' + question.replace(/"/g, '&quot;') +
+                    '" data-sql="' + (resp.sql || '').replace(/"/g, '&quot;') +
+                    '" data-analysis="' + (resp.analysis || '').replace(/"/g, '&quot;') +
+                    '" title="收藏此回答"><i class="fa fa-star-o"></i></button>';
+
+            loading.find('.msg-bubble').html(html);
+
+            chatHistory.push({
+                role: 'assistant',
+                content: question,
+                sql: resp.sql || '',
+                analysis: resp.analysis || ''
+            });
+            trimHistory();
+        },
+        error: function(xhr, status, err) {
+            var msg = status === 'timeout' ? '请求超时，请稍后重试' : '网络错误: ' + (err || status);
+            loading.find('.msg-bubble').html('<div style="color:#d9534f;">' + msg + '</div>');
+        }
+    });
+}
+
+$(function() {
+    renderFavBadge();
+
+    // 发送
+    $('#btn-send').click(function() {
+        var q = $('#chat-input').val().trim();
+        if (q) {
+            sendQuestion(q);
+            $('#chat-input').val('');
+        }
+    });
+
+    // 回车发送
+    $('#chat-input').keypress(function(e) {
+        if (e.which === 13) $('#btn-send').click();
+    });
+
+    // 快捷提问
+    $('.quick-q').click(function() {
+        sendQuestion($(this).data('q'));
+    });
+
+    // 收藏按钮（事件委托，动态生成）
+    $(document).on('click', '.btn-star', function() {
+        var btn = $(this);
+        var q = btn.data('q');
+        var sql = btn.data('sql');
+        var analysis = btn.data('analysis');
+        addFavorite(q, sql, analysis);
+        btn.addClass('starred').find('i').removeClass('fa-star-o').addClass('fa-star');
+        btn.prop('disabled', true).attr('title', '已收藏');
+    });
+
+    // 收藏面板
+    $('#btn-favorites').click(function() {
+        var panel = $('#fav-panel');
+        if (panel.hasClass('active')) {
+            panel.removeClass('active');
+        } else {
+            renderFavPanel();
+            panel.addClass('active');
+        }
+    });
+
+    // 收藏面板 - 点击问题重新提问
+    $(document).on('click', '.fav-q', function() {
+        var idx = $(this).data('idx');
+        var q = favorites[idx].question;
+        $('#fav-panel').removeClass('active');
+        sendQuestion(q);
+    });
+
+    // 收藏面板 - 删除
+    $(document).on('click', '.fav-del', function(e) {
+        e.stopPropagation();
+        var idx = $(this).data('idx');
+        removeFavorite(idx);
+    });
+
+    // 设置面板
+    $('#btn-settings').click(function() {
+        $('#settings-panel').toggleClass('active');
+    });
+
+    // 保存配置
+    $('#btn-save-config').click(function() {
+        var data = {
+            api_token: $('#cfg-token').val().trim(),
+            model_name: $('#cfg-model').val().trim(),
+            api_url: $('#cfg-url').val().trim()
+        };
+        if (!data.model_name) {
+            $('#config-status').text('模型名称不能为空').css('color', '#d9534f');
+            return;
+        }
+        $.ajax({
+            url: '/stock/ai_agent/config',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(data),
+            dataType: 'json',
+            success: function(resp) {
+                if (resp.success) {
+                    $('#config-status').text('保存成功').css('color', '#5cb85c');
+                    $('#cfg-token').val('');
+                } else {
+                    $('#config-status').text(resp.message).css('color', '#d9534f');
+                }
+            },
+            error: function() {
+                $('#config-status').text('保存失败').css('color', '#d9534f');
+            }
+        });
+    });
+
+    // 检测连接
+    $('#btn-test-conn').click(function() {
+        var btn = $(this);
+        btn.prop('disabled', true).text('检测中...');
+        $('#config-status').text('正在检测...').css('color', '#999');
+        $.ajax({
+            url: '/stock/ai_agent/test',
+            type: 'POST',
+            dataType: 'json',
+            timeout: 65000,
+            success: function(resp) {
+                if (resp.success) {
+                    $('#config-status').text(resp.message).css('color', '#5cb85c');
+                } else {
+                    $('#config-status').text(resp.message).css('color', '#d9534f');
+                }
+            },
+            error: function(xhr, status, err) {
+                $('#config-status').text('检测请求失败: ' + (err || status)).css('color', '#d9534f');
+            },
+            complete: function() {
+                btn.prop('disabled', false).text('检测连接');
+            }
+        });
+    });
+});
+</script>
+{% end %}

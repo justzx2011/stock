@@ -15,6 +15,8 @@ class StockWebData:
             self.url = "/stock/data?table_name=" + self.table_name
         elif mode == "editor":
             self.url = "/data/editor?table_name=" + self.table_name
+        elif mode == "ai_agent":
+            self.url = "/stock/ai_agent"
         elif mode == "report":
             if table_name == "stock_evening_report":
                 self.url = "/stock/evening_report"
@@ -162,6 +164,20 @@ STOCK_WEB_DATA_LIST.append(
 
 # "code", "name: pchange", "amount", "buy", "bratio", "sell", "sratio", "reason", "date"
 # 代码 名称 当日涨跌幅 龙虎榜成交额(万) 买入额(万) 买入占总成交比例 卖出额(万) 卖出占总成交比例 上榜原因 日期
+
+# AI 数据分析师
+STOCK_WEB_DATA_LIST.append(
+    StockWebData(
+        mode="ai_agent",
+        type="4，AI 分析",
+        name="AI 数据分析师",
+        table_name="ai_agent",
+        columns=[],
+        column_names=[],
+        primary_key=[],
+        order_by=""
+    )
+)
 
 
 STOCK_WEB_DATA_MAP = {}
