@@ -17,6 +17,21 @@ class BaseHandler(tornado.web.RequestHandler):
             self.application.db.reconnect()
         return self.application.db
 
+    def get_current_user(self):
+        return self.get_secure_cookie("user")
+
+class AuthenticatedHandler(BaseHandler):
+    """需要登录才能访问的 Handler"""
+    def prepare(self):
+        if not self.get_current_user():
+            if self.request.path.startswith("/stock/ai_agent"):
+                # AJAX 请求返回 401
+                self.set_status(401)
+                self.write({"error": "请先登录"})
+                self.finish()
+            else:
+                self.redirect("/login?next=" + self.request.path)
+
 class LeftMenu:
     def __init__(self, url):
         self.leftMenuList = stock_web_dic.STOCK_WEB_DATA_LIST

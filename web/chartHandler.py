@@ -36,7 +36,7 @@ class ImageHandler(tornado.web.RequestHandler):
         self.write(image)
 
 # 获得页面数据。
-class GetChartHtmlHandler(webBase.BaseHandler):
+class GetChartHtmlHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         name = self.get_argument("table_name", default=None, strip=False)

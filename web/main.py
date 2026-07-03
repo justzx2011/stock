@@ -16,6 +16,7 @@ import web.dataIndicatorsHandler as dataIndicatorsHandler
 import web.morningReportHandler as morningReportHandler
 import web.eveningReportHandler as eveningReportHandler
 import web.aiAgentHandler as aiAgentHandler
+import web.loginHandler as loginHandler
 import web.base as webBase
 import pandas as pd
 import numpy as np
@@ -25,6 +26,9 @@ import bokeh as bh
 class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
+            # 登录/登出
+            (r"/login", loginHandler.LoginHandler),
+            (r"/logout", loginHandler.LogoutHandler),
             # 设置路由
             (r"/", HomeHandler),
             (r"/stock/", HomeHandler),
@@ -62,6 +66,7 @@ class Application(tornado.web.Application):
             xsrf_cookies=False,  # True,
             # cookie加密
             cookie_secret="027bb1b670eddf0392cdda8709268a17b58b7",
+            login_url="/login",
             debug=True,
         )
         super(Application, self).__init__(handlers, **settings)
@@ -73,7 +78,7 @@ class Application(tornado.web.Application):
 
 
 # 首页handler。
-class HomeHandler(webBase.BaseHandler):
+class HomeHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         print("################## index.html ##################")

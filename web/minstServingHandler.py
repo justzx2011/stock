@@ -23,7 +23,7 @@ out_dir = "/static/img/minst_serving/%s.bmp"
 
 
 # 获得页面数据。
-class GetMinstServingHtmlHandler(webBase.BaseHandler):
+class GetMinstServingHtmlHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         # print self.uri_
@@ -37,7 +37,7 @@ class GetMinstServingHtmlHandler(webBase.BaseHandler):
 
 
 # 获得股票数据内容。
-class GetPredictionDataHandler(webBase.BaseHandler):
+class GetPredictionDataHandler(webBase.AuthenticatedHandler):
     def get(self):
         # 获得分页参数。
         img_url = self.get_argument("img_url", default=0, strip=False)
@@ -51,7 +51,7 @@ class GetPredictionDataHandler(webBase.BaseHandler):
 
 
 # 获得股票数据内容。
-class GetPrediction2DataHandler(webBase.BaseHandler):
+class GetPrediction2DataHandler(webBase.AuthenticatedHandler):
     def post(self):
         # 获得分页参数。
         imgStr = self.get_argument("txt", default="", strip=False)

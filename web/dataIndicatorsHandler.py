@@ -20,7 +20,7 @@ from bokeh.models import DatetimeTickFormatter
 
 
 # 获得页面数据。
-class GetDataIndicatorsHandler(webBase.BaseHandler):
+class GetDataIndicatorsHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         code = self.get_argument("code", default=None, strip=False)

@@ -104,7 +104,7 @@ def validate_sql(sql):
 # ============================================================
 # Handler: AI 分析师页面
 # ============================================================
-class AiAgentPageHandler(webBase.BaseHandler):
+class AiAgentPageHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         _ensure_table()
@@ -121,7 +121,7 @@ class AiAgentPageHandler(webBase.BaseHandler):
 # ============================================================
 # Handler: 聊天 API
 # ============================================================
-class AiAgentChatHandler(webBase.BaseHandler):
+class AiAgentChatHandler(webBase.AuthenticatedHandler):
     def post(self):
         self.set_header("Content-Type", "application/json; charset=utf-8")
         try:
@@ -206,7 +206,7 @@ class AiAgentChatHandler(webBase.BaseHandler):
 # ============================================================
 # Handler: 配置管理
 # ============================================================
-class AiAgentConfigHandler(webBase.BaseHandler):
+class AiAgentConfigHandler(webBase.AuthenticatedHandler):
     def get(self):
         """获取当前配置（token 脱敏）"""
         self.set_header("Content-Type", "application/json; charset=utf-8")
@@ -255,7 +255,7 @@ class AiAgentConfigHandler(webBase.BaseHandler):
 # ============================================================
 # Handler: 大模型可用性检测
 # ============================================================
-class AiAgentTestHandler(webBase.BaseHandler):
+class AiAgentTestHandler(webBase.AuthenticatedHandler):
     def post(self):
         """发送测试请求验证 LLM 可用性"""
         self.set_header("Content-Type", "application/json; charset=utf-8")
@@ -293,7 +293,7 @@ class AiAgentTestHandler(webBase.BaseHandler):
 # ============================================================
 # Handler: 聊天历史（服务端存储）
 # ============================================================
-class AiAgentHistoryHandler(webBase.BaseHandler):
+class AiAgentHistoryHandler(webBase.AuthenticatedHandler):
     def get(self):
         """获取最近10条历史记录"""
         self.set_header("Content-Type", "application/json; charset=utf-8")
@@ -339,7 +339,7 @@ class AiAgentHistoryHandler(webBase.BaseHandler):
 # ============================================================
 # Handler: 收藏（服务端存储）
 # ============================================================
-class AiAgentFavoritesHandler(webBase.BaseHandler):
+class AiAgentFavoritesHandler(webBase.AuthenticatedHandler):
     def get(self):
         """获取全部收藏"""
         self.set_header("Content-Type", "application/json; charset=utf-8")

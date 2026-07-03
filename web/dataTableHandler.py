@@ -30,7 +30,7 @@ eastmoney_name = "查看股票"
 
 
 # 获得页面数据。
-class GetStockHtmlHandler(webBase.BaseHandler):
+class GetStockHtmlHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         name = self.get_argument("table_name", default=None, strip=False)
@@ -64,7 +64,7 @@ class GetStockHtmlHandler(webBase.BaseHandler):
 
 
 # 获得股票数据内容。
-class GetStockDataHandler(webBase.BaseHandler):
+class GetStockDataHandler(webBase.AuthenticatedHandler):
     def get(self):
 
         # 获得分页参数。

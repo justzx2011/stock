@@ -13,7 +13,7 @@ import logging
 import re
 
 # 获得页面数据。
-class GetEditorHtmlHandler(webBase.BaseHandler):
+class GetEditorHtmlHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def get(self):
         name = self.get_argument("table_name", default=None, strip=False)
@@ -40,7 +40,7 @@ def genSql(primary_key, param_map, join_string):
 
 
 # 获得页面数据。
-class SaveEditorHandler(webBase.BaseHandler):
+class SaveEditorHandler(webBase.AuthenticatedHandler):
     @gen.coroutine
     def post(self):
         action = self.get_argument("action", default=None, strip=False)

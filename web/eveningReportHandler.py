@@ -11,7 +11,7 @@ import traceback
 import threading
 
 
-class EveningReportListHandler(webBase.BaseHandler):
+class EveningReportListHandler(webBase.AuthenticatedHandler):
     """报告列表页面"""
     @gen.coroutine
     def get(self):
@@ -20,7 +20,7 @@ class EveningReportListHandler(webBase.BaseHandler):
                     leftMenu=webBase.GetLeftMenu(self.request.uri))
 
 
-class EveningReportApiHandler(webBase.BaseHandler):
+class EveningReportApiHandler(webBase.AuthenticatedHandler):
     """DataTable服务端数据API"""
     @gen.coroutine
     def get(self):
@@ -61,7 +61,7 @@ class EveningReportApiHandler(webBase.BaseHandler):
             self.write(json.dumps({"draw": 1, "recordsTotal": 0, "recordsFiltered": 0, "data": []}, ensure_ascii=False))
 
 
-class EveningReportDetailHandler(webBase.BaseHandler):
+class EveningReportDetailHandler(webBase.AuthenticatedHandler):
     """获取单份报告详情"""
     @gen.coroutine
     def get(self):
@@ -101,7 +101,7 @@ class EveningReportDetailHandler(webBase.BaseHandler):
             self.write(json.dumps({"success": False, "message": str(e)}, ensure_ascii=False))
 
 
-class EveningReportGenerateHandler(webBase.BaseHandler):
+class EveningReportGenerateHandler(webBase.AuthenticatedHandler):
     """手动触发生成尾盘选股报告"""
     @gen.coroutine
     def post(self):
