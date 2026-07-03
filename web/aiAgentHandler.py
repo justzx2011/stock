@@ -128,11 +128,12 @@ class AiAgentChatHandler(webBase.AuthenticatedHandler):
             body = json.loads(self.request.body.decode("utf-8"))
             message = body.get("message", "").strip()
             history = body.get("history", [])
+            direct_sql = body.get("direct_sql", "").strip()
         except Exception as e:
             self.write(json.dumps({"error": "请求格式错误"}, ensure_ascii=False))
             return
 
-        if not message:
+        if not message and not direct_sql:
             self.write(json.dumps({"error": "请输入问题"}, ensure_ascii=False))
             return
 
@@ -141,20 +142,24 @@ class AiAgentChatHandler(webBase.AuthenticatedHandler):
         model_name = get_config("model_name", "")
         api_url = get_config("api_url", llm_client.DEFAULT_API_URL)
 
-        if not api_token or not model_name:
-            self.write(json.dumps({
-                "error": "请先在页面设置中配置 API Token 和模型名称"
-            }, ensure_ascii=False))
-            return
+        if direct_sql:
+            # 直接执行收藏的 SQL，跳过 LLM 生成
+            sql = direct_sql
+        else:
+            if not api_token or not model_name:
+                self.write(json.dumps({
+                    "error": "请先在页面设置中配置 API Token 和模型名称"
+                }, ensure_ascii=False))
+                return
 
-        # Step 1: 生成 SQL
-        sql, llm_err = llm_client.generate_sql(api_url, api_token, model_name, message, history)
-        if not sql:
-            self.write(json.dumps({
-                "error": "AI 无法生成查询语句: %s" % (llm_err or "请检查 Token 和模型配置"),
-                "sql": ""
-            }, ensure_ascii=False))
-            return
+            # Step 1: 生成 SQL
+            sql, llm_err = llm_client.generate_sql(api_url, api_token, model_name, message, history)
+            if not sql:
+                self.write(json.dumps({
+                    "error": "AI 无法生成查询语句: %s" % (llm_err or "请检查 Token 和模型配置"),
+                    "sql": ""
+                }, ensure_ascii=False))
+                return
 
         # Step 2: SQL 安全校验
         is_valid, result = validate_sql(sql)
@@ -396,4 +401,34 @@ class AiAgentFavoritesHandler(webBase.AuthenticatedHandler):
             self.write(json.dumps({"success": True}, ensure_ascii=False))
         except Exception as e:
             print("[AI Agent] 删除收藏异常:", e)
+            self.write(json.dumps({"success": False}, ensure_ascii=False))
+
+    def put(self):
+        """修改收藏（标题和/或SQL）"""
+        self.set_header("Content-Type", "application/json; charset=utf-8")
+        try:
+            body = json.loads(self.request.body.decode("utf-8"))
+            fav_id = body.get("id")
+            if not fav_id:
+                self.write(json.dumps({"success": False, "message": "缺少id"}, ensure_ascii=False))
+                return
+            updates = []
+            params = []
+            if "title" in body:
+                updates.append("question = %s")
+                params.append(body["title"].strip())
+            if "sql" in body:
+                updates.append("sql_text = %s")
+                params.append(body["sql"].strip())
+            if not updates:
+                self.write(json.dumps({"success": False, "message": "无更新字段"}, ensure_ascii=False))
+                return
+            params.append(fav_id)
+            common.insert(
+                "UPDATE ai_agent_favorites SET %s WHERE id = %%s" % ", ".join(updates),
+                tuple(params)
+            )
+            self.write(json.dumps({"success": True}, ensure_ascii=False))
+        except Exception as e:
+            print("[AI Agent] 修改收藏异常:", e)
             self.write(json.dumps({"success": False}, ensure_ascii=False))

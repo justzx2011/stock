@@ -30,15 +30,27 @@
 .data-table-wrapper { max-height: 300px; overflow: auto; margin: 8px 0; }
 .btn-star { background: none; border: none; cursor: pointer; font-size: 16px; color: #ccc; padding: 2px 6px; margin-left: 6px; vertical-align: top; }
 .btn-star:hover, .btn-star.starred { color: #f0ad4e; }
-.fav-panel { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px 15px; margin-bottom: 10px; display: none; max-height: 250px; overflow-y: auto; }
+.fav-panel { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px 15px; margin-bottom: 10px; display: none; max-height: 350px; overflow-y: auto; }
 .fav-panel.active { display: block; }
-.fav-item { padding: 6px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.fav-item { padding: 8px 0; border-bottom: 1px solid #eee; }
 .fav-item:last-child { border-bottom: none; }
+.fav-main { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
 .fav-q { flex: 1; cursor: pointer; color: #438eb9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
 .fav-q:hover { text-decoration: underline; }
 .fav-time { color: #999; font-size: 11px; margin-right: 8px; white-space: nowrap; }
-.fav-del { color: #d9534f; cursor: pointer; font-size: 12px; padding: 0 4px; }
+.fav-actions { display: flex; gap: 6px; }
+.fav-actions span { cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.fav-edit { color: #5bc0de; }
+.fav-edit:hover { color: #31b0d5; }
+.fav-del { color: #d9534f; }
 .fav-del:hover { color: #c9302c; }
+.fav-sql-toggle { color: #999; font-size: 11px; cursor: pointer; margin-top: 4px; }
+.fav-sql-toggle:hover { color: #666; }
+.fav-sql { display: none; background: #f5f5f5; border: 1px solid #ddd; border-radius: 3px; padding: 6px 10px; margin-top: 6px; font-family: monospace; font-size: 11px; color: #333; white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow: auto; }
+.fav-sql.show { display: block; }
+.fav-edit-input { width: 100%; padding: 4px 8px; border: 1px solid #438eb9; border-radius: 3px; font-size: 13px; margin-right: 8px; }
+.fav-edit-btns { display: flex; gap: 4px; }
+.fav-edit-btns button { padding: 2px 8px; font-size: 11px; }
 .fav-empty { color: #999; text-align: center; padding: 15px; }
 .fav-badge { background: #f0ad4e; color: #fff; font-size: 10px; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
 .hist-panel { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px 15px; margin-bottom: 10px; display: none; max-height: 250px; overflow-y: auto; }
@@ -157,6 +169,21 @@ function removeFavorite(id) {
     });
 }
 
+function updateFavorite(id, data) {
+    $.ajax({
+        url: '/stock/ai_agent/favorites',
+        type: 'PUT',
+        contentType: 'application/json',
+        data: JSON.stringify($.extend({ id: id }, data)),
+        dataType: 'json',
+        success: function(resp) {
+            if (resp.success) {
+                loadFavorites(function() { renderFavPanel(); });
+            }
+        }
+    });
+}
+
 function renderFavBadge() {
     var n = favorites.length;
     $('#fav-count').text(n).toggle(n > 0);
@@ -169,10 +196,26 @@ function renderFavPanel() {
     } else {
         for (var i = 0; i < favorites.length; i++) {
             var f = favorites[i];
-            html += '<div class="fav-item">';
-            html += '<span class="fav-q" data-q="' + f.question.replace(/"/g, '&quot;') + '" title="' + f.question + '">' + f.question + '</span>';
+            var sqlPreview = (f.sql || '').substring(0, 80).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html += '<div class="fav-item" data-id="' + f.id + '">';
+            html += '<div class="fav-main">';
+            html += '<span class="fav-q" data-q="' + f.question.replace(/"/g, '&quot;') + '" title="点击重新提问: ' + f.question + '">' + f.question + '</span>';
             html += '<span class="fav-time">' + (f.time || '') + '</span>';
+            html += '<div class="fav-actions">';
+            html += '<span class="fav-edit" data-id="' + f.id + '" data-title="' + f.question.replace(/"/g, '&quot;') + '" title="编辑标题"><i class="fa fa-pencil"></i></span>';
             html += '<span class="fav-del" data-id="' + f.id + '" title="删除"><i class="fa fa-trash-o"></i></span>';
+            html += '</div>';
+            html += '</div>';
+            if (f.sql) {
+                html += '<div class="fav-sql-toggle" data-target="sql-' + f.id + '"><i class="fa fa-code"></i> 查看SQL</div>';
+                html += '<div class="fav-sql" id="sql-' + f.id + '">' + (f.sql || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+            }
+            html += '<div class="fav-sql-actions" style="margin-top:4px;">';
+            html += '<span class="fav-edit-sql" data-id="' + f.id + '" data-sql="' + (f.sql || '').replace(/"/g, '&quot;') + '" title="编辑SQL" style="color:#999;font-size:11px;cursor:pointer;margin-right:10px;"><i class="fa fa-pencil"></i> 编辑SQL</span>';
+            if (f.sql) {
+                html += '<span class="fav-run-sql" data-q="' + f.question.replace(/"/g, '&quot;') + '" data-sql="' + (f.sql || '').replace(/"/g, '&quot;') + '" title="用此SQL重新查询" style="color:#438eb9;font-size:11px;cursor:pointer;"><i class="fa fa-play"></i> 执行SQL</span>';
+            }
+            html += '</div>';
             html += '</div>';
         }
     }
@@ -322,6 +365,111 @@ $(function() {
     $(document).on('click', '.fav-del', function(e) {
         e.stopPropagation();
         removeFavorite($(this).data('id'));
+    });
+
+    // 收藏编辑标题
+    $(document).on('click', '.fav-edit', function(e) {
+        e.stopPropagation();
+        var id = $(this).data('id');
+        var currentTitle = $(this).data('title');
+        var item = $(this).closest('.fav-item');
+        var mainRow = item.find('.fav-main');
+        mainRow.html(
+            '<input type="text" class="fav-edit-input" value="' + currentTitle.replace(/"/g, '&quot;') + '" />' +
+            '<div class="fav-edit-btns">' +
+            '<button class="btn btn-xs btn-primary fav-save-edit" data-id="' + id + '">保存</button>' +
+            '<button class="btn btn-xs btn-default fav-cancel-edit">取消</button>' +
+            '</div>'
+        );
+        mainRow.find('.fav-edit-input').focus().select();
+    });
+
+    $(document).on('click', '.fav-save-edit', function(e) {
+        e.stopPropagation();
+        var id = $(this).data('id');
+        var newTitle = $(this).closest('.fav-main').find('.fav-edit-input').val().trim();
+        if (newTitle) {
+            updateFavorite(id, { title: newTitle });
+        }
+    });
+
+    $(document).on('click', '.fav-cancel-edit', function(e) {
+        e.stopPropagation();
+        renderFavPanel();
+    });
+
+    $(document).on('keypress', '.fav-edit-input', function(e) {
+        if (e.which === 13) {
+            $(this).closest('.fav-main').find('.fav-save-edit').click();
+        }
+    });
+
+    // 收藏 SQL 展开/收起
+    $(document).on('click', '.fav-sql-toggle', function(e) {
+        e.stopPropagation();
+        var target = $(this).data('target');
+        $('#' + target).toggleClass('show');
+        $(this).find('i').toggleClass('fa-code fa-eye');
+    });
+
+    // 编辑 SQL
+    $(document).on('click', '.fav-edit-sql', function(e) {
+        e.stopPropagation();
+        var id = $(this).data('id');
+        var currentSql = $(this).data('sql');
+        var item = $(this).closest('.fav-item');
+        var actionsDiv = $(this).closest('.fav-sql-actions');
+        actionsDiv.html(
+            '<textarea class="fav-sql-input" style="width:100%;height:80px;padding:4px 8px;border:1px solid #438eb9;border-radius:3px;font-family:monospace;font-size:11px;resize:vertical;">' +
+            currentSql.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</textarea>' +
+            '<div style="margin-top:4px;">' +
+            '<button class="btn btn-xs btn-primary fav-save-sql" data-id="' + id + '">保存</button> ' +
+            '<button class="btn btn-xs btn-default fav-cancel-sql-edit">取消</button>' +
+            '</div>'
+        );
+        actionsDiv.find('.fav-sql-input').focus();
+    });
+
+    $(document).on('click', '.fav-save-sql', function(e) {
+        e.stopPropagation();
+        var id = $(this).data('id');
+        var newSql = $(this).closest('.fav-sql-actions').find('.fav-sql-input').val().trim();
+        updateFavorite(id, { sql: newSql });
+    });
+
+    $(document).on('click', '.fav-cancel-sql-edit', function(e) {
+        e.stopPropagation();
+        renderFavPanel();
+    });
+
+    // 执行收藏中的 SQL
+    $(document).on('click', '.fav-run-sql', function(e) {
+        e.stopPropagation();
+        var question = $(this).data('q');
+        var sql = $(this).data('sql');
+        $('#fav-panel').removeClass('active');
+        addMessage('user', '[执行SQL] ' + question);
+        var loading = addMessage('ai', '<span class="typing-indicator">正在执行...</span>');
+        $.ajax({
+            url: '/stock/ai_agent/chat',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ message: question, history: [], direct_sql: sql }),
+            dataType: 'json',
+            timeout: 120000,
+            success: function(resp) {
+                var html = '';
+                if (resp.sql) html += '<div><strong>SQL:</strong><pre>' + resp.sql + '</pre></div>';
+                if (resp.columns && resp.rows) html += '<div><strong>查询结果:</strong>' + buildTable(resp.columns, resp.rows) + '</div>';
+                if (resp.analysis) html += '<div><strong>分析:</strong><br>' + renderMarkdown(resp.analysis) + '</div>';
+                if (resp.error) html += '<div style="color:#d9534f;">' + resp.error + '</div>';
+                if (!html) html = '<span style="color:#999;">无结果</span>';
+                loading.find('.msg-bubble').html(html);
+            },
+            error: function(xhr, status, err) {
+                loading.find('.msg-bubble').html('<div style="color:#d9534f;">执行失败: ' + (err || status) + '</div>');
+            }
+        });
     });
 
     // 历史面板
