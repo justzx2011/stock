@@ -89,19 +89,28 @@ def stat_all_batch(tmp_datetime):
     print("datetime_str:", datetime_str)
     print("datetime_int:", datetime_int)
 
+    # 检查源数据量
+    sql_count = """
+    SELECT count(1) FROM  stock_zh_ah_name WHERE `date` = %s and `open` > 0
+    """
+    count = common.select_count(sql_count, params=[datetime_int])
+    print("count :", count)
+
+    # 保护逻辑：如果已有数据量远大于新数据量，跳过覆盖（防止早晨未开盘时误覆盖）
+    existing_count_sql = "SELECT count(1) FROM guess_indicators_daily WHERE `date` = %s"
+    existing_count = common.select_count(existing_count_sql, params=[datetime_int])
+    print("existing_count:", existing_count)
+    
+    if existing_count > 1000 and count < existing_count * 0.5:
+        print("[SKIP] 新数据量(%d)远小于已有数据量(%d)，跳过覆盖，可能是早晨未开盘导致" % (count, existing_count))
+        return
+
     try:
         # 删除老数据。
         del_sql = " DELETE FROM `guess_indicators_daily` WHERE `date`= %s " % datetime_int
         common.insert(del_sql)
     except Exception as e:
         print("error :", e)
-
-    sql_count = """
-    SELECT count(1) FROM  stock_zh_ah_name WHERE `date` = %s and `open` > 0
-    """
-    # 修改逻辑，增加中小板块计算。 中小板：002，创业板：300 。已经是经过筛选的数据了。
-    count = common.select_count(sql_count, params=[datetime_int])
-    print("count :", count)
     batch_size = 100
     end = int(math.ceil(float(count) / batch_size) * batch_size)
     print(end)

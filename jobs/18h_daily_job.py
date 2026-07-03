@@ -81,6 +81,15 @@ def stat_all(tmp_datetime):
         print(data)
         data['date'] = datetime_int  # 修改时间成为int类型。
 
+        # 保护逻辑：检查 open > 0 的股票数量，如果太少说明市场未开盘
+        open_count = len(data[data['open'] > 0])
+        total_count = len(data)
+        print("[检查] open > 0: %d, 总数: %d" % (open_count, total_count))
+        
+        if open_count < total_count * 0.1:
+            print("[SKIP] 市场可能未开盘（open > 0 仅 %d/%d），跳过更新" % (open_count, total_count))
+            return
+
         # 删除老数据。
         del_sql = " DELETE FROM `stock_zh_ah_name` where `date` = '%s' " % datetime_int
         common.insert(del_sql)
