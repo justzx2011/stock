@@ -53,6 +53,8 @@ class Application(tornado.web.Application):
             (r"/stock/ai_agent/chat", aiAgentHandler.AiAgentChatHandler),
             (r"/stock/ai_agent/config", aiAgentHandler.AiAgentConfigHandler),
             (r"/stock/ai_agent/test", aiAgentHandler.AiAgentTestHandler),
+            (r"/stock/ai_agent/history", aiAgentHandler.AiAgentHistoryHandler),
+            (r"/stock/ai_agent/favorites", aiAgentHandler.AiAgentFavoritesHandler),
         ]
         settings = dict(  # 配置
             template_path=os.path.join(os.path.dirname(__file__), "templates"),

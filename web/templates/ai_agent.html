@@ -41,6 +41,13 @@
 .fav-del:hover { color: #c9302c; }
 .fav-empty { color: #999; text-align: center; padding: 15px; }
 .fav-badge { background: #f0ad4e; color: #fff; font-size: 10px; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
+.hist-panel { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px 15px; margin-bottom: 10px; display: none; max-height: 250px; overflow-y: auto; }
+.hist-panel.active { display: block; }
+.hist-item { padding: 5px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.hist-item:last-child { border-bottom: none; }
+.hist-q { flex: 1; cursor: pointer; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+.hist-q:hover { color: #438eb9; text-decoration: underline; }
+.hist-empty { color: #999; text-align: center; padding: 15px; }
 </style>
 
 <h3 class="header smaller lighter blue">
@@ -50,6 +57,9 @@
     </button>
     <button class="btn btn-xs btn-default pull-right" id="btn-favorites" style="margin-top: 5px; margin-right: 5px;">
         <i class="fa fa-star"></i> 收藏<span class="fav-badge" id="fav-count" style="display:none;">0</span>
+    </button>
+    <button class="btn btn-xs btn-default pull-right" id="btn-history" style="margin-top: 5px; margin-right: 5px;">
+        <i class="fa fa-history"></i> 历史
     </button>
 </h3>
 
@@ -74,6 +84,8 @@
 
 <!-- 收藏面板 -->
 <div class="fav-panel" id="fav-panel"></div>
+<!-- 历史面板 -->
+<div class="hist-panel" id="hist-panel"></div>
 
 <div class="chat-container">
     <!-- 快捷提问 -->
@@ -109,43 +121,45 @@
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-var MAX_HISTORY = 20; // 最近10轮 = 20条消息
+var MAX_HISTORY = 20;
 var chatHistory = [];
-var favorites = JSON.parse(localStorage.getItem('ai_agent_favs') || '[]');
+var favorites = [];
+var historyList = [];
 
-// === 收藏管理 ===
-function saveFavs() {
-    localStorage.setItem('ai_agent_favs', JSON.stringify(favorites));
-    renderFavBadge();
+// === 服务端收藏 ===
+function loadFavorites(cb) {
+    $.get('/stock/ai_agent/favorites', function(data) {
+        favorites = data || [];
+        renderFavBadge();
+        if (cb) cb();
+    }, 'json');
+}
+
+function addFavorite(question, sql, analysis) {
+    $.ajax({
+        url: '/stock/ai_agent/favorites',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ question: question, sql: sql, analysis: analysis }),
+        dataType: 'json',
+        success: function() { loadFavorites(); }
+    });
+}
+
+function removeFavorite(id) {
+    $.ajax({
+        url: '/stock/ai_agent/favorites',
+        type: 'DELETE',
+        contentType: 'application/json',
+        data: JSON.stringify({ id: id }),
+        dataType: 'json',
+        success: function() { loadFavorites(function() { renderFavPanel(); }); }
+    });
 }
 
 function renderFavBadge() {
     var n = favorites.length;
-    if (n > 0) {
-        $('#fav-count').text(n).show();
-    } else {
-        $('#fav-count').hide();
-    }
-}
-
-function addFavorite(question, sql, analysis) {
-    // 去重：同一问题不重复收藏
-    for (var i = 0; i < favorites.length; i++) {
-        if (favorites[i].question === question) return;
-    }
-    favorites.unshift({
-        question: question,
-        sql: sql || '',
-        analysis: analysis || '',
-        time: new Date().toLocaleString('zh-CN')
-    });
-    saveFavs();
-}
-
-function removeFavorite(idx) {
-    favorites.splice(idx, 1);
-    saveFavs();
-    renderFavPanel();
+    $('#fav-count').text(n).toggle(n > 0);
 }
 
 function renderFavPanel() {
@@ -156,13 +170,47 @@ function renderFavPanel() {
         for (var i = 0; i < favorites.length; i++) {
             var f = favorites[i];
             html += '<div class="fav-item">';
-            html += '<span class="fav-q" data-idx="' + i + '" title="' + f.question + '">' + f.question + '</span>';
+            html += '<span class="fav-q" data-q="' + f.question.replace(/"/g, '&quot;') + '" title="' + f.question + '">' + f.question + '</span>';
             html += '<span class="fav-time">' + (f.time || '') + '</span>';
-            html += '<span class="fav-del" data-idx="' + i + '" title="删除"><i class="fa fa-trash-o"></i></span>';
+            html += '<span class="fav-del" data-id="' + f.id + '" title="删除"><i class="fa fa-trash-o"></i></span>';
             html += '</div>';
         }
     }
     $('#fav-panel').html(html);
+}
+
+// === 服务端历史 ===
+function loadHistory(cb) {
+    $.get('/stock/ai_agent/history', function(data) {
+        historyList = data || [];
+        if (cb) cb();
+    }, 'json');
+}
+
+function saveHistory(question, sql, analysis) {
+    $.ajax({
+        url: '/stock/ai_agent/history',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ question: question, sql: sql, analysis: analysis }),
+        dataType: 'json'
+    });
+}
+
+function renderHistPanel() {
+    var html = '';
+    if (historyList.length === 0) {
+        html = '<div class="hist-empty">暂无历史记录</div>';
+    } else {
+        for (var i = 0; i < historyList.length; i++) {
+            var h = historyList[i];
+            html += '<div class="hist-item">';
+            html += '<span class="hist-q" data-q="' + h.question.replace(/"/g, '&quot;') + '" title="' + h.question + '">' + h.question + '</span>';
+            html += '<span class="fav-time">' + (h.time || '') + '</span>';
+            html += '</div>';
+        }
+    }
+    $('#hist-panel').html(html);
 }
 
 // === 聊天核心 ===
@@ -182,9 +230,7 @@ function buildTable(columns, rows) {
     html += '</tr></thead><tbody>';
     rows.forEach(function(row) {
         html += '<tr>';
-        row.forEach(function(v) {
-            html += '<td>' + (v === null ? '-' : v) + '</td>';
-        });
+        row.forEach(function(v) { html += '<td>' + (v === null ? '-' : v) + '</td>'; });
         html += '</tr>';
     });
     html += '</tbody></table></div>';
@@ -193,27 +239,18 @@ function buildTable(columns, rows) {
 }
 
 function renderMarkdown(text) {
-    try {
-        if (typeof marked !== 'undefined') {
-            return marked.parse(text);
-        }
-    } catch(e) {}
+    try { if (typeof marked !== 'undefined') return marked.parse(text); } catch(e) {}
     return '<pre>' + text + '</pre>';
 }
 
 function trimHistory() {
-    // 保留最近 MAX_HISTORY 条
-    if (chatHistory.length > MAX_HISTORY) {
-        chatHistory = chatHistory.slice(chatHistory.length - MAX_HISTORY);
-    }
+    if (chatHistory.length > MAX_HISTORY) chatHistory = chatHistory.slice(chatHistory.length - MAX_HISTORY);
 }
 
 function sendQuestion(question) {
     if (!question.trim()) return;
-
     addMessage('user', question);
     var loading = addMessage('ai', '<span class="typing-indicator">正在思考中...</span>');
-
     chatHistory.push({ role: 'user', content: question });
     trimHistory();
 
@@ -226,43 +263,24 @@ function sendQuestion(question) {
         timeout: 120000,
         success: function(resp) {
             var html = '';
+            if (resp.error) html += '<div style="color:#d9534f;"><i class="fa fa-exclamation-triangle"></i> ' + resp.error + '</div>';
+            if (resp.sql) html += '<div><strong>SQL:</strong><pre>' + resp.sql + '</pre></div>';
+            if (resp.columns && resp.rows) html += '<div><strong>查询结果:</strong>' + buildTable(resp.columns, resp.rows) + '</div>';
+            if (resp.analysis) html += '<div><strong>分析:</strong><br>' + renderMarkdown(resp.analysis) + '</div>';
+            if (!html) html = '<span style="color:#999;">未获得有效结果</span>';
 
-            if (resp.error) {
-                html += '<div style="color:#d9534f;"><i class="fa fa-exclamation-triangle"></i> ' + resp.error + '</div>';
-            }
-
-            if (resp.sql) {
-                html += '<div><strong>SQL:</strong><pre>' + resp.sql + '</pre></div>';
-            }
-
-            if (resp.columns && resp.rows) {
-                html += '<div><strong>查询结果:</strong>' + buildTable(resp.columns, resp.rows) + '</div>';
-            }
-
-            if (resp.analysis) {
-                html += '<div><strong>分析:</strong><br>' + renderMarkdown(resp.analysis) + '</div>';
-            }
-
-            if (!html) {
-                html = '<span style="color:#999;">未获得有效结果</span>';
-            }
-
-            // 添加收藏按钮
             var starId = 'star-' + Date.now();
             html += '<button class="btn-star" id="' + starId + '" data-q="' + question.replace(/"/g, '&quot;') +
                     '" data-sql="' + (resp.sql || '').replace(/"/g, '&quot;') +
                     '" data-analysis="' + (resp.analysis || '').replace(/"/g, '&quot;') +
                     '" title="收藏此回答"><i class="fa fa-star-o"></i></button>';
-
             loading.find('.msg-bubble').html(html);
 
-            chatHistory.push({
-                role: 'assistant',
-                content: question,
-                sql: resp.sql || '',
-                analysis: resp.analysis || ''
-            });
+            chatHistory.push({ role: 'assistant', content: question, sql: resp.sql || '', analysis: resp.analysis || '' });
             trimHistory();
+
+            // 保存到服务端历史
+            if (!resp.error) saveHistory(question, resp.sql || '', resp.analysis || '');
         },
         error: function(xhr, status, err) {
             var msg = status === 'timeout' ? '请求超时，请稍后重试' : '网络错误: ' + (err || status);
@@ -272,123 +290,79 @@ function sendQuestion(question) {
 }
 
 $(function() {
-    renderFavBadge();
+    // 初始化加载
+    loadFavorites();
+    loadHistory();
 
-    // 发送
     $('#btn-send').click(function() {
         var q = $('#chat-input').val().trim();
-        if (q) {
-            sendQuestion(q);
-            $('#chat-input').val('');
-        }
+        if (q) { sendQuestion(q); $('#chat-input').val(''); }
     });
+    $('#chat-input').keypress(function(e) { if (e.which === 13) $('#btn-send').click(); });
+    $('.quick-q').click(function() { sendQuestion($(this).data('q')); });
 
-    // 回车发送
-    $('#chat-input').keypress(function(e) {
-        if (e.which === 13) $('#btn-send').click();
-    });
-
-    // 快捷提问
-    $('.quick-q').click(function() {
-        sendQuestion($(this).data('q'));
-    });
-
-    // 收藏按钮（事件委托，动态生成）
+    // 收藏按钮
     $(document).on('click', '.btn-star', function() {
         var btn = $(this);
-        var q = btn.data('q');
-        var sql = btn.data('sql');
-        var analysis = btn.data('analysis');
-        addFavorite(q, sql, analysis);
+        addFavorite(btn.data('q'), btn.data('sql'), btn.data('analysis'));
         btn.addClass('starred').find('i').removeClass('fa-star-o').addClass('fa-star');
         btn.prop('disabled', true).attr('title', '已收藏');
     });
 
     // 收藏面板
     $('#btn-favorites').click(function() {
-        var panel = $('#fav-panel');
-        if (panel.hasClass('active')) {
-            panel.removeClass('active');
-        } else {
-            renderFavPanel();
-            panel.addClass('active');
-        }
+        var p = $('#fav-panel');
+        if (p.hasClass('active')) { p.removeClass('active'); }
+        else { renderFavPanel(); p.addClass('active'); $('#hist-panel').removeClass('active'); }
     });
-
-    // 收藏面板 - 点击问题重新提问
     $(document).on('click', '.fav-q', function() {
-        var idx = $(this).data('idx');
-        var q = favorites[idx].question;
         $('#fav-panel').removeClass('active');
-        sendQuestion(q);
+        sendQuestion($(this).data('q'));
     });
-
-    // 收藏面板 - 删除
     $(document).on('click', '.fav-del', function(e) {
         e.stopPropagation();
-        var idx = $(this).data('idx');
-        removeFavorite(idx);
+        removeFavorite($(this).data('id'));
     });
 
-    // 设置面板
-    $('#btn-settings').click(function() {
-        $('#settings-panel').toggleClass('active');
+    // 历史面板
+    $('#btn-history').click(function() {
+        var p = $('#hist-panel');
+        if (p.hasClass('active')) { p.removeClass('active'); }
+        else { loadHistory(function() { renderHistPanel(); }); p.addClass('active'); $('#fav-panel').removeClass('active'); }
+    });
+    $(document).on('click', '.hist-q', function() {
+        $('#hist-panel').removeClass('active');
+        sendQuestion($(this).data('q'));
     });
 
-    // 保存配置
+    // 设置
+    $('#btn-settings').click(function() { $('#settings-panel').toggleClass('active'); });
     $('#btn-save-config').click(function() {
-        var data = {
-            api_token: $('#cfg-token').val().trim(),
-            model_name: $('#cfg-model').val().trim(),
-            api_url: $('#cfg-url').val().trim()
-        };
-        if (!data.model_name) {
-            $('#config-status').text('模型名称不能为空').css('color', '#d9534f');
-            return;
-        }
+        var data = { api_token: $('#cfg-token').val().trim(), model_name: $('#cfg-model').val().trim(), api_url: $('#cfg-url').val().trim() };
+        if (!data.model_name) { $('#config-status').text('模型名称不能为空').css('color', '#d9534f'); return; }
         $.ajax({
-            url: '/stock/ai_agent/config',
-            type: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(data),
-            dataType: 'json',
+            url: '/stock/ai_agent/config', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify(data), dataType: 'json',
             success: function(resp) {
-                if (resp.success) {
-                    $('#config-status').text('保存成功').css('color', '#5cb85c');
-                    $('#cfg-token').val('');
-                } else {
-                    $('#config-status').text(resp.message).css('color', '#d9534f');
-                }
+                $('#config-status').text(resp.success ? '保存成功' : resp.message).css('color', resp.success ? '#5cb85c' : '#d9534f');
+                if (resp.success) $('#cfg-token').val('');
             },
-            error: function() {
-                $('#config-status').text('保存失败').css('color', '#d9534f');
-            }
+            error: function() { $('#config-status').text('保存失败').css('color', '#d9534f'); }
         });
     });
-
-    // 检测连接
     $('#btn-test-conn').click(function() {
         var btn = $(this);
         btn.prop('disabled', true).text('检测中...');
         $('#config-status').text('正在检测...').css('color', '#999');
         $.ajax({
-            url: '/stock/ai_agent/test',
-            type: 'POST',
-            dataType: 'json',
-            timeout: 65000,
+            url: '/stock/ai_agent/test', type: 'POST', dataType: 'json', timeout: 65000,
             success: function(resp) {
-                if (resp.success) {
-                    $('#config-status').text(resp.message).css('color', '#5cb85c');
-                } else {
-                    $('#config-status').text(resp.message).css('color', '#d9534f');
-                }
+                $('#config-status').text(resp.message).css('color', resp.success ? '#5cb85c' : '#d9534f');
             },
             error: function(xhr, status, err) {
                 $('#config-status').text('检测请求失败: ' + (err || status)).css('color', '#d9534f');
             },
-            complete: function() {
-                btn.prop('disabled', false).text('检测连接');
-            }
+            complete: function() { btn.prop('disabled', false).text('检测连接'); }
         });
     });
 });
