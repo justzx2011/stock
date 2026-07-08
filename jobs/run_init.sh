@@ -28,7 +28,12 @@ nohup bash /data/stock/jobs/cron.daily/run_daily &
 # 注册定时任务（幂等：先剔除旧的晨报/尾盘条目再追加，避免容器重启后重复堆积）
 chmod +x /data/stock/jobs/cron.9h/run_morning_report
 chmod +x /data/stock/jobs/cron.14h/run_evening_report
-(crontab -l 2>/dev/null | grep -v -F "/data/stock/jobs/cron.9h/run_morning_report" | grep -v -F "/data/stock/jobs/cron.14h/run_evening_report"; echo "28 9 * * 1-5 bash /data/stock/jobs/cron.9h/run_morning_report"; echo "50 14 * * 1-5 bash /data/stock/jobs/cron.14h/run_evening_report") | crontab -
+CRONTAB_TMP=$(mktemp)
+crontab -l 2>/dev/null | grep -v -F "run_morning_report" | grep -v -F "run_evening_report" > "$CRONTAB_TMP"
+printf '28 9 * * 1-5 bash /data/stock/jobs/cron.9h/run_morning_report\n' >> "$CRONTAB_TMP"
+printf '0 17 * * 1-5 bash /data/stock/jobs/cron.14h/run_evening_report\n' >> "$CRONTAB_TMP"
+crontab "$CRONTAB_TMP"
+rm -f "$CRONTAB_TMP"
 
 #启动cron服务。在前台
 /usr/sbin/cron -f
