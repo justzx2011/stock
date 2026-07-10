@@ -293,6 +293,18 @@ def get_market_stats(tmp_datetime):
 
 WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
+def get_eastmoney_link(code, name):
+    """
+    生成东方财富行情页链接
+    6开头 → sh（上海），0或3开头 → sz（深圳）
+    """
+    code = str(code)
+    if code.startswith('6'):
+        prefix = 'sh'
+    else:
+        prefix = 'sz'
+    return f"[{name}](https://quote.eastmoney.com/{prefix}{code}.html)"
+
 
 def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kdj, market_state):
     """生成 Markdown 报告：以可买池为核心"""
@@ -340,7 +352,7 @@ def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kd
         lines.append("")
 
         if stats["top_gainers"]:
-            gainers_str = "、".join(["%s（+%.1f%%）" % (g["name"], g["change"]) for g in stats["top_gainers"][:6]])
+            gainers_str = "、".join(["%s（+%.1f%%）" % (get_eastmoney_link(g["code"], g["name"]), g["change"]) for g in stats["top_gainers"][:6]])
             lines.append("牛股 TOP：%s" % gainers_str)
             lines.append("")
     else:
@@ -353,7 +365,7 @@ def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kd
             sectors_str = "、".join([s["name"] for s in phase1_data["hot_industry_sectors"][:5]])
             lines.append("行业领涨：%s" % sectors_str)
         if phase1_data["leader_stocks"]:
-            leaders_str = "、".join(["%s（+%.1f%%）" % (s["name"], s["quote_change"]) for s in phase1_data["leader_stocks"][:6]])
+            leaders_str = "、".join(["%s（+%.1f%%）" % (get_eastmoney_link(s["code"], s["name"]), s["quote_change"]) for s in phase1_data["leader_stocks"][:6]])
             lines.append("龙头股：%s" % leaders_str)
         lines.append("")
 
@@ -368,7 +380,7 @@ def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kd
             rr_tag = "" if s["rr_ok"] else " ⚠️盈亏比偏低"
             ml_tag = " ｜ 主线核心" if s["in_mainline"] else ""
             lines.append("### %d. %s（%s）— %s ｜ 评分 **%d**%s%s\n" % (
-                i, s["name"], s["code"], s["bp_type"], s["score"], rr_tag, ml_tag))
+                i, get_eastmoney_link(s["code"], s["name"]), s["code"], s["bp_type"], s["score"], rr_tag, ml_tag))
             lines.append("- 现价 **%.2f元** %+.2f%%" % (s["price"], s["quote_change"]))
             lines.append("- 结构：60日位置 %.0f%%（距前高 %.1f%%）｜ 回踩深度 %.1f%% ｜ %s" % (
                 s["position_pct"], s["dist_from_high"], s["pullback_depth"],
@@ -394,7 +406,7 @@ def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kd
         lines.append("> 以下为超买追涨命中票：指标强势，但位置偏高或未达买点结构，追高盈亏比差，仅作情绪参考。\n")
         for s in sentiment_pool[:10]:
             lines.append("- %s（%s） %.2f元 %+.2f%% ｜ J=%.0f RSI=%.0f ｜ 评分%d ｜ %s" % (
-                s["name"], s["code"], s["price"], s["quote_change"],
+                get_eastmoney_link(s["code"], s["name"]), s["code"], s["price"], s["quote_change"],
                 s["kdjj"], s["rsi_6"], s["score"], s["note"]))
         lines.append("")
     else:

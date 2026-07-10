@@ -25,6 +25,18 @@ CREATE TABLE IF NOT EXISTS `stock_evening_report` (
 REPORT_DIR = "/data/reports/"
 WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
+def get_eastmoney_link(code, name):
+    """
+    生成东方财富行情页链接
+    6开头 → sh（上海），0或3开头 → sz（深圳）
+    """
+    code = str(code)
+    if code.startswith('6'):
+        prefix = 'sh'
+    else:
+        prefix = 'sz'
+    return f"[{name}](https://quote.eastmoney.com/{prefix}{code}.html)"
+
 
 def ensure_table():
     try:
@@ -312,10 +324,10 @@ def generate_report(tmp_datetime, overview, main_line, scored, sentiment_pool, m
         sectors_str = "、".join(["%s（%+.1f%%）" % (s["name"], s["change"]) for s in main_line["sectors"][:5]])
         lines.append("板块领涨：%s" % sectors_str)
     if main_line["leaders"]:
-        leaders_str = "、".join(["%s（%+.1f%%）" % (s["name"], s["change"]) for s in main_line["leaders"][:6]])
+        leaders_str = "、".join(["%s（%+.1f%%）" % (get_eastmoney_link(s["code"], s["name"]), s["change"]) for s in main_line["leaders"][:6]])
         lines.append("涨停龙头：%s" % leaders_str)
     if main_line["hot_stocks"]:
-        hot_str = "、".join(["%s（%+.1f%%）" % (s["name"], s["change"]) for s in main_line["hot_stocks"][:8]])
+        hot_str = "、".join(["%s（%+.1f%%）" % (get_eastmoney_link(s["code"], s["name"]), s["change"]) for s in main_line["hot_stocks"][:8]])
         lines.append("强势股：%s" % hot_str)
     if overview["is_weak"]:
         lines.append("")
@@ -333,7 +345,7 @@ def generate_report(tmp_datetime, overview, main_line, scored, sentiment_pool, m
             rr_tag = "" if s["rr_ok"] else " ⚠️盈亏比偏低"
             ml_tag = " ｜ 主线核心" if s["in_mainline"] else ""
             lines.append("### %d. %s（%s）— %s ｜ 评分 **%d**%s%s\n" % (
-                i, s["name"], s["code"], s["bp_type"], s["score"], rr_tag, ml_tag))
+                i, get_eastmoney_link(s["code"], s["name"]), s["code"], s["bp_type"], s["score"], rr_tag, ml_tag))
             lines.append("- 现价 **%.2f元** %+.2f%%" % (s["price"], s["quote_change"]))
             lines.append("- 结构：60日位置 %.0f%%（距前高 %.1f%%）｜ 回踩深度 %.1f%% ｜ %s" % (
                 s["position_pct"], s["dist_from_high"], s["pullback_depth"],
@@ -359,7 +371,7 @@ def generate_report(tmp_datetime, overview, main_line, scored, sentiment_pool, m
         lines.append("> 超买追涨命中票：指标强势但位置偏高/未达买点结构，追高盈亏比差，仅作情绪参考。\n")
         for s in sentiment_pool[:10]:
             lines.append("- %s（%s） %.2f元 %+.2f%% ｜ J=%.0f RSI=%.0f ｜ 评分%d ｜ %s" % (
-                s["name"], s["code"], s["price"], s["quote_change"],
+                get_eastmoney_link(s["code"], s["name"]), s["code"], s["price"], s["quote_change"],
                 s["kdjj"], s["rsi_6"], s["score"], s["note"]))
         lines.append("")
     else:
