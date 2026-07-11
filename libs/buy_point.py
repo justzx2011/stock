@@ -369,3 +369,242 @@ def pick_buyable(scored_candidates, state, threshold=BUYABLE_THRESHOLD):
         seen.add(c["code"])
 
     return picks
+
+
+# ============================================================================
+# 旧版策略（重构前硬性阈值，仅供报告附录对比，不参与可买池推荐）
+# ============================================================================
+def select_strategy_a(tmp_datetime, limit=20):
+    """旧版策略A（超买追涨）：硬性阈值筛选，满足即进。
+
+    条件：KDJ-J≥100、K≥80、D≥70、RSI6>70、MACD柱>0
+    返回命中票列表（按 J 降序），每项含 code/name/price/quote_change
+    及 kdjk/kdjd/kdjj/rsi_6/cci/macdh。
+    """
+    datetime_int = tmp_datetime.strftime("%Y%m%d")
+    sql = """
+        SELECT `code`,`name`,`latest_price`,`quote_change`,
+               `kdjk`,`kdjd`,`kdjj`,`rsi_6`,`cci`,`macd`,`macdh`,`macds`
+        FROM stock_data.guess_indicators_daily
+        WHERE `date` = %s
+            AND kdjj >= 100 AND kdjk >= 80 AND kdjd >= 70
+            AND rsi_6 > 70 AND macdh > 0
+        ORDER BY kdjj DESC
+        LIMIT %s
+    """
+    try:
+        rows = common.select(sql, (datetime_int, limit)) or []
+    except Exception as e:
+        print("[策略A] 查询异常:", e)
+        return []
+    hits = []
+    for row in rows:
+        hits.append({
+            "code": str(row[0]), "name": row[1],
+            "price": _safe_float(row[2]),
+            "quote_change": _safe_float(row[3]),
+            "kdjk": _safe_float(row[4]),
+            "kdjd": _safe_float(row[5]),
+            "kdjj": _safe_float(row[6]),
+            "rsi_6": _safe_float(row[7]),
+            "cci": _safe_float(row[8]),
+            "macdh": _safe_float(row[10]),
+        })
+    return hits
+
+
+def select_strategy_b(tmp_datetime, limit=10):
+    """旧版策略B（突破回踩）：硬性阈值筛选，满足即进。
+
+    条件：涨跌幅±2%内、RSI 40-60、CCI -100~100、站上60MA、靠近20MA（偏离<2%）。
+    前3项走 SQL 预筛（取30只），再逐只做K线均线验证。
+    返回命中票列表（按 |涨跌幅| 升序），每项含 code/name/price/quote_change
+    及 kdjj/rsi_6/cci/ma20/ma60。
+    """
+    datetime_int = tmp_datetime.strftime("%Y%m%d")
+    sql = """
+        SELECT `code`,`name`,`latest_price`,`quote_change`,
+               `kdjk`,`kdjd`,`kdjj`,`rsi_6`,`cci`
+        FROM stock_data.guess_indicators_daily
+        WHERE `date` = %s
+            AND quote_change BETWEEN -2 AND 2
+            AND rsi_6 BETWEEN 40 AND 60
+            AND cci BETWEEN -100 AND 100
+            AND volume > 0
+        ORDER BY ABS(quote_change) ASC
+        LIMIT 30
+    """
+    try:
+        rows = common.select(sql, (datetime_int,)) or []
+    except Exception as e:
+        print("[策略B] 查询异常:", e)
+        return []
+
+    date_end = tmp_datetime.strftime("%Y-%m-%d")
+    date_start = (tmp_datetime + datetime.timedelta(days=-100)).strftime("%Y-%m-%d")
+    hits = []
+    for row in rows:
+        code = str(row[0])
+        try:
+            kdf = common.get_hist_data_cache(code, date_start, date_end)
+            if kdf is None or kdf.empty or len(kdf) < 20:
+                continue
+            kdf = kdf.sort_index()
+            close = kdf["close"].astype(float)
+            cur = float(close.iloc[-1])
+            ma20 = float(close.rolling(20, min_periods=10).mean().iloc[-1]) if len(close) >= 20 else float(close.mean())
+            ma60 = float(close.rolling(60, min_periods=20).mean().iloc[-1]) if len(close) >= 60 else ma20
+            if ma60 > 0 and ma20 > 0 and cur > 0:
+                above_60ma = cur > ma60
+                near_20ma = abs(cur - ma20) / ma20 < 0.02
+                if above_60ma and near_20ma:
+                    hits.append({
+                        "code": code, "name": row[1],
+                        "price": _safe_float(row[2]),
+                        "quote_change": _safe_float(row[3]),
+                        "kdjj": _safe_float(row[6]),
+                        "rsi_6": _safe_float(row[7]),
+                        "cci": _safe_float(row[8]),
+                        "ma20": round(ma20, 2),
+                        "ma60": round(ma60, 2),
+                    })
+                    if len(hits) >= limit:
+                        break
+        except Exception as e:
+            print("[策略B] 处理异常:", code, e)
+    return hits
+
+
+# ============================================================================
+# 魅视科技式选股
+# ============================================================================
+def get_semiconductor_mainline_codes(tmp_datetime):
+    """获取半导体主线核心股票代码集合。
+
+    通过查询涨幅>=5且名称或概念包含"半导体"、"芯片"、"集成电路"、
+    "IC"、"晶圆"、"封测"、"光刻机"等关键词的股票。
+    """
+    datetime_int = tmp_datetime.strftime("%Y%m%d")
+    codes = set()
+    try:
+        # 查询涨幅>=5的股票，通过名称筛选半导体相关
+        sql = ("SELECT code, name FROM stock_zh_ah_name "
+               "WHERE date = '%s' AND quote_change >= 5 AND latest_price > 0") % datetime_int
+        for r in common.select(sql) or []:
+            code = str(r[0])
+            name = str(r[1]) if r[1] else ""
+            # 半导体相关关键词
+            keywords = ["半导体", "芯片", "集成电路", "IC", "晶圆", "封测", "光刻机",
+                       "半导体材料", "半导体设备", "功率半导体", "第三代半导体"]
+            if any(kw in name for kw in keywords):
+                codes.add(code)
+        # 也加入所有主线强势股（作为补充）
+        mainline_all = get_mainline_codes(tmp_datetime)
+        codes.update(mainline_all)
+    except Exception as e:
+        print("[半导体主线] 获取异常:", e)
+    return codes
+
+
+def check_consecutive_days_in_pool(code, tmp_datetime, min_days=3):
+    """检查股票是否连续多日在策略A候选池中。
+
+    返回连续在池的天数。
+    """
+    consecutive_days = 0
+    # 从当天往前查
+    for i in range(0, 10):  # 最多查10天
+        check_date = tmp_datetime + datetime.timedelta(days=-i)
+        datetime_int = check_date.strftime("%Y%m%d")
+        # 检查当天是否在策略A命中池中
+        try:
+            sql = """
+                SELECT count(1)
+                FROM stock_data.guess_indicators_daily
+                WHERE `date` = %s
+                    AND code = %s
+                    AND kdjj >= 100 AND kdjk >= 80 AND kdjd >= 70
+                    AND rsi_6 > 70 AND macdh > 0
+            """
+            count = common.select_count(sql, (datetime_int, code))
+            if count > 0:
+                consecutive_days += 1
+            else:
+                # 如果某天不在，就停止（只算连续的）
+                if consecutive_days > 0:
+                    break
+        except Exception as e:
+            print("[连续在池检查] 异常:", code, check_date, e)
+            break
+    return consecutive_days
+
+
+def select_meishi_tech(tmp_datetime):
+    """魅视科技式选股：叠加半导体主线 + D≥70 确认 + 连续多日在池。
+
+    从"策略A∩lite买入"候选里选出推荐的票。
+
+    条件：
+    1. 属于半导体主线（涨幅>=5且名称含半导体相关关键词，或主线强势股）
+    2. KDJ-D ≥ 70
+    3. 连续多日（至少3天）在策略A候选池中
+    4. 来自"策略A∩lite买入"（即策略A命中且满足一定的lite条件）
+    """
+    datetime_int = tmp_datetime.strftime("%Y%m%d")
+
+    # 1. 获取半导体主线代码
+    semi_mainline = get_semiconductor_mainline_codes(tmp_datetime)
+    print("[魅视科技] 半导体主线股票数:", len(semi_mainline))
+
+    # 2. 从策略A命中中筛选：D≥70 + 半导体主线 + 连续多日在池
+    sql = """
+        SELECT `code`,`name`,`latest_price`,`quote_change`,
+               `kdjk`,`kdjd`,`kdjj`,`rsi_6`,`cci`,`macd`,`macdh`,`macds`
+        FROM stock_data.guess_indicators_daily
+        WHERE `date` = %s
+            AND kdjj >= 100 AND kdjk >= 80 AND kdjd >= 70  -- 策略A条件
+            AND rsi_6 > 70 AND macdh > 0
+            AND volume > 0
+        ORDER BY kdjj DESC
+    """
+    try:
+        rows = common.select(sql, (datetime_int,)) or []
+    except Exception as e:
+        print("[魅视科技] 查询异常:", e)
+        return []
+
+    hits = []
+    for row in rows:
+        code = str(row[0])
+        kdjd = _safe_float(row[5])
+
+        # 条件1: D≥70（已经在SQL里过滤了，但再确认一次）
+        if kdjd < 70:
+            continue
+
+        # 条件2: 属于半导体主线
+        if code not in semi_mainline:
+            continue
+
+        # 条件3: 连续多日在池（至少3天）
+        consecutive_days = check_consecutive_days_in_pool(code, tmp_datetime, min_days=3)
+        if consecutive_days < 3:
+            continue
+
+        # 加入结果
+        hits.append({
+            "code": code, "name": row[1],
+            "price": _safe_float(row[2]),
+            "quote_change": _safe_float(row[3]),
+            "kdjk": _safe_float(row[4]),
+            "kdjd": kdjd,
+            "kdjj": _safe_float(row[6]),
+            "rsi_6": _safe_float(row[7]),
+            "cci": _safe_float(row[8]),
+            "macdh": _safe_float(row[10]),
+            "consecutive_days": consecutive_days,
+            "in_semiconductor_mainline": True,
+        })
+
+    print("[魅视科技] 命中数:", len(hits))
+    return hits

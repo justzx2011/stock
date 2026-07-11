@@ -25,11 +25,13 @@ printenv | grep -v "no_proxy" >> /etc/environment
 # 第一次后台执行日数据。
 nohup bash /data/stock/jobs/cron.daily/run_daily &
 
-# 注册定时任务（幂等：先剔除旧的晨报/尾盘条目再追加，避免容器重启后重复堆积）
+# 注册定时任务（幂等：先剔除旧的晨报/尾盘/魅视科技条目再追加，避免容器重启后重复堆积）
 chmod +x /data/stock/jobs/cron.9h/run_morning_report
 chmod +x /data/stock/jobs/cron.14h/run_evening_report
+chmod +x /data/stock/jobs/cron.8h30/run_meishi_tech
 CRONTAB_TMP=$(mktemp)
-crontab -l 2>/dev/null | grep -v -F "run_morning_report" | grep -v -F "run_evening_report" > "$CRONTAB_TMP"
+crontab -l 2>/dev/null | grep -v -F "run_morning_report" | grep -v -F "run_evening_report" | grep -v -F "run_meishi_tech" > "$CRONTAB_TMP"
+printf '30 8 * * 1-5 bash /data/stock/jobs/cron.8h30/run_meishi_tech\n' >> "$CRONTAB_TMP"
 printf '28 9 * * 1-5 bash /data/stock/jobs/cron.9h/run_morning_report\n' >> "$CRONTAB_TMP"
 printf '0 17 * * 1-5 bash /data/stock/jobs/cron.14h/run_evening_report\n' >> "$CRONTAB_TMP"
 crontab "$CRONTAB_TMP"

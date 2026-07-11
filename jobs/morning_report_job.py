@@ -122,14 +122,16 @@ def phase1_sentiment(tmp_datetime):
 def select_buyable(tmp_datetime, mainline_codes):
     """技术面择时：宽候选集评分 + 策略A情绪观察池。
 
-    返回: (scored_list, sentiment_pool, market_kdj)
+    返回: (scored_list, sentiment_pool, market_kdj, strategy_a_hits)
     - scored_list: 通过评分的候选（含分数、买点类型、止损位）
     - sentiment_pool: 策略A超买追涨命中但未入可买池的票（仅观察）
+    - strategy_a_hits: 旧版策略A（超买追涨）全部命中票，供报告附录对比
     """
     datetime_int = tmp_datetime.strftime("%Y%m%d")
     market_kdj = {"kdjk": 0, "kdjd": 0, "kdjj": 0}
     scored = []
     sentiment_pool = []
+    strategy_a_hits = []
 
     # 大盘KDJ均值
     try:
@@ -180,23 +182,13 @@ def select_buyable(tmp_datetime, mainline_codes):
     #    命中票同样跑评分：分数够且位置/主线合适则进可买池，否则只进情绪观察池
     try:
         print("[Phase2] 策略A: 超买追涨筛选（情绪观察池）...")
-        sql_a = """
-            SELECT `code`,`name`,`latest_price`,`quote_change`,
-                   `kdjk`,`kdjd`,`kdjj`,`rsi_6`,`cci`,`macd`,`macdh`,`macds`
-            FROM stock_data.guess_indicators_daily
-            WHERE `date` = %s
-                AND kdjj >= 100 AND kdjk >= 80 AND kdjd >= 70
-                AND rsi_6 > 70 AND macdh > 0
-            ORDER BY kdjj DESC
-            LIMIT 20
-        """
-        rows_a = common.select(sql_a, (datetime_int,))
+        strategy_a_hits = buy_point.select_strategy_a(tmp_datetime)
         existing = set(c["code"] for c in scored)
-        for row in rows_a or []:
-            code = str(row[0])
-            ind = {"kdjj": row[6], "rsi_6": row[7], "cci": row[8], "macdh": row[10]}
+        for h in strategy_a_hits:
+            code = h["code"]
+            ind = {"kdjj": h["kdjj"], "rsi_6": h["rsi_6"], "cci": h["cci"], "macdh": h["macdh"]}
             s = buy_point.score_candidate(
-                code, row[1], row[2], row[3], ind, tmp_datetime, mainline_codes)
+                code, h["name"], h["price"], h["quote_change"], ind, tmp_datetime, mainline_codes)
             if s and s["score"] >= buy_point.BUYABLE_THRESHOLD and code not in existing:
                 scored.append(s)
                 existing.add(code)
@@ -204,15 +196,15 @@ def select_buyable(tmp_datetime, mainline_codes):
                 # 进情绪观察池：这些票强势但位置偏高/非主线，追高盈亏比差
                 pos_note = "位置偏高" if (s and s["position_pct"] > 70) else "未达买点结构"
                 sentiment_pool.append({
-                    "code": code, "name": row[1],
-                    "price": float(row[2]) if row[2] else 0,
-                    "quote_change": float(row[3]) if row[3] else 0,
-                    "kdjj": float(row[6]) if row[6] else 0,
-                    "rsi_6": float(row[7]) if row[7] else 0,
+                    "code": code, "name": h["name"],
+                    "price": h["price"],
+                    "quote_change": h["quote_change"],
+                    "kdjj": h["kdjj"],
+                    "rsi_6": h["rsi_6"],
                     "score": s["score"] if s else 0,
                     "note": pos_note,
                 })
-        print("[Phase2] 策略A情绪观察池: %d只" % len(sentiment_pool))
+        print("[Phase2] 策略A命中: %d只, 情绪观察池: %d只" % (len(strategy_a_hits), len(sentiment_pool)))
     except Exception as e:
         print("[Phase2] 策略A异常:", e)
         traceback.print_exc()
@@ -223,7 +215,7 @@ def select_buyable(tmp_datetime, mainline_codes):
         sentiment_pool = excluded + sentiment_pool
         print("[Phase2] 硬门槛排除(高位/低盈亏比): %d只" % len(excluded))
 
-    return scored, sentiment_pool, market_kdj
+    return scored, sentiment_pool, market_kdj, strategy_a_hits
 
 
 def get_market_stats(tmp_datetime):
@@ -306,7 +298,7 @@ def get_eastmoney_link(code, name):
     return f"[{name}](https://quote.eastmoney.com/{prefix}{code}.html)"
 
 
-def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kdj, market_state):
+def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kdj, market_state, strategy_a_hits, strategy_b_hits):
     """生成 Markdown 报告：以可买池为核心"""
     date_str = tmp_datetime.strftime("%Y-%m-%d")
     weekday = WEEKDAY_CN[tmp_datetime.weekday()]
@@ -427,6 +419,38 @@ def generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kd
     lines.append("- 规避：高位连板妖股、无量反弹、业绩地雷股、盈亏比偏低标的")
     lines.append("")
 
+    # ===== 六、附录：旧版逻辑选股（重构前）=====
+    lines.append("## 六、附录：旧版逻辑选股（重构前·硬性阈值）\n")
+    lines.append("> 以下为重构前硬性阈值策略的原始命中结果，仅作对比参考，**不作为买入依据**。新逻辑以可买池评分为准。\n")
+
+    # 策略A：超买追涨
+    lines.append("### 策略A（超买追涨）\n")
+    lines.append("**筛选条件**：KDJ-J≥100、K≥80、D≥70、RSI6>70、MACD柱>0\n")
+    if strategy_a_hits:
+        names_str = "、".join(["%s（%s，J=%.0f）" % (get_eastmoney_link(h["code"], h["name"]), h["code"], h["kdjj"]) for h in strategy_a_hits[:8]])
+        lines.append("今日命中 %d 只：%s\n" % (len(strategy_a_hits), names_str))
+        lines.append("**重点个股**\n")
+        for h in strategy_a_hits[:3]:
+            lines.append("- %s（%s） %.2f元 %+.2f%%" % (get_eastmoney_link(h["code"], h["name"]), h["code"], h["price"], h["quote_change"]))
+            lines.append("  KDJ-J=%.0f RSI=%.0f MACD柱=%.2f | 追涨策略，J值拐头即止盈" % (h["kdjj"], h["rsi_6"], h["macdh"]))
+        lines.append("")
+    else:
+        lines.append("今日无超买追涨标的，策略暂缓。\n")
+
+    # 策略B：突破回踩
+    lines.append("### 策略B（突破回踩）\n")
+    lines.append("**筛选条件**：涨跌幅±2%内、站上60MA、靠近20MA（偏离<2%）、RSI 40-60、CCI -100~100\n")
+    if strategy_b_hits:
+        names_str = "、".join(["%s（%s）" % (get_eastmoney_link(h["code"], h["name"]), h["code"]) for h in strategy_b_hits[:8]])
+        lines.append("今日命中 %d 只：%s\n" % (len(strategy_b_hits), names_str))
+        lines.append("**重点个股**\n")
+        for h in strategy_b_hits[:3]:
+            lines.append("- %s（%s） %.2f元 %+.2f%%" % (get_eastmoney_link(h["code"], h["name"]), h["code"], h["price"], h["quote_change"]))
+            lines.append("  20MA=%.2f 60MA=%.2f RSI=%.0f | 回踩确认，放量反弹可介入，跌破60MA止损" % (h["ma20"], h["ma60"], h["rsi_6"]))
+        lines.append("")
+    else:
+        lines.append("今日无突破回踩标的，策略暂缓。\n")
+
     lines.append("---")
     lines.append("")
     lines.append("> 本报告基于历史数据和技术指标自动生成，不构成投资建议。")
@@ -511,15 +535,19 @@ def stat_all(tmp_datetime):
 
     # Phase 2: 评分选股
     print("\n[Phase 2] 评分选股...")
-    scored, sentiment_pool, market_kdj = select_buyable(tmp_datetime, mainline_codes)
+    scored, sentiment_pool, market_kdj, strategy_a_hits = select_buyable(tmp_datetime, mainline_codes)
     print("[Phase 2] 评分候选: %d只, 情绪观察池: %d只" % (len(scored), len(sentiment_pool)))
+
+    # 旧版策略B（突破回踩）：仅供报告附录对比
+    strategy_b_hits = buy_point.select_strategy_b(tmp_datetime)
+    print("[Phase 2] 旧版策略A(超买追涨): %d只, 策略B(突破回踩): %d只" % (len(strategy_a_hits), len(strategy_b_hits)))
 
     picks = buy_point.pick_buyable(scored, market_state)
     print("[Phase 2] 可买池: %d只" % len(picks))
 
     # Phase 3: 生成报告
     print("\n[Phase 3] 生成报告...")
-    report_content = generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kdj, market_state)
+    report_content = generate_report(tmp_datetime, phase1_data, scored, sentiment_pool, market_kdj, market_state, strategy_a_hits, strategy_b_hits)
     save_report(tmp_datetime, report_content)
     print("\n[完成] A股选股晨报生成成功")
 

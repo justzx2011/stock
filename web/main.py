@@ -15,6 +15,7 @@ import web.dataEditorHandler as dataEditorHandler
 import web.dataIndicatorsHandler as dataIndicatorsHandler
 import web.morningReportHandler as morningReportHandler
 import web.eveningReportHandler as eveningReportHandler
+import web.meishiTechReportHandler as meishiTechReportHandler
 import web.aiAgentHandler as aiAgentHandler
 import web.loginHandler as loginHandler
 import web.base as webBase
@@ -52,6 +53,11 @@ class Application(tornado.web.Application):
             (r"/stock/evening_report/api", eveningReportHandler.EveningReportApiHandler),
             (r"/stock/evening_report/detail", eveningReportHandler.EveningReportDetailHandler),
             (r"/stock/evening_report/generate", eveningReportHandler.EveningReportGenerateHandler),
+            # 魅视科技式选股。
+            (r"/stock/meishi_tech", meishiTechReportHandler.MeishiTechReportListHandler),
+            (r"/stock/meishi_tech/api", meishiTechReportHandler.MeishiTechReportApiHandler),
+            (r"/stock/meishi_tech/detail", meishiTechReportHandler.MeishiTechReportDetailHandler),
+            (r"/stock/meishi_tech/generate", meishiTechReportHandler.MeishiTechReportGenerateHandler),
             # AI 数据分析师。
             (r"/stock/ai_agent", aiAgentHandler.AiAgentPageHandler),
             (r"/stock/ai_agent/chat", aiAgentHandler.AiAgentChatHandler),
