@@ -608,3 +608,186 @@ def select_meishi_tech(tmp_datetime):
 
     print("[魅视科技] 命中数:", len(hits))
     return hits
+
+
+def select_hsc_style(tmp_datetime):
+    """华盛昌风格选股：深度回调后企稳反弹。
+
+    借鉴华盛昌(002980)的走势特征：
+    1. 经历较深回调（8-20%）
+    2. 近期开始反弹（5日涨幅2-15%）
+    3. 量能萎缩或稳定
+    4. 60日位置适中（30-70%）
+    5. 中期均线多头排列（MA20 > MA60）
+    6. 大跌后企稳
+    """
+    datetime_int = tmp_datetime.strftime("%Y%m%d")
+    print("[华盛昌风格] 选股日期:", datetime_int)
+
+    # 1. 获取主线股票（加分项）
+    mainline_codes = get_mainline_codes(tmp_datetime)
+    print("[华盛昌风格] 主线股票数:", len(mainline_codes))
+
+    # 2. 从技术指标初筛
+    sql = """
+        SELECT `code`,`name`,`latest_price`,`quote_change`,
+               `kdjk`,`kdjd`,`kdjj`,`rsi_6`,`cci`,`macdh`,
+               `volume`
+        FROM stock_data.guess_indicators_daily
+        WHERE `date` = %s
+            AND latest_price > 0
+            AND volume > 0
+        ORDER BY volume DESC
+        LIMIT 300
+    """
+    try:
+        rows = common.select(sql, (datetime_int,)) or []
+    except Exception as e:
+        print("[华盛昌风格] 查询异常:", e)
+        return []
+
+    print("[华盛昌风格] 初筛候选数:", len(rows))
+
+    candidates = []
+    for row in rows:
+        code = str(row[0])
+        name = row[1] if row[1] else ""
+
+        try:
+            # 获取K线数据
+            date_end = tmp_datetime.strftime("%Y-%m-%d")
+            date_start = (tmp_datetime + datetime.timedelta(days=-60)).strftime("%Y-%m-%d")
+            kdf = common.get_hist_data_cache(code, date_start, date_end)
+            if kdf is None or kdf.empty or len(kdf) < 20:
+                continue
+
+            kdf = kdf.sort_index()
+            close = kdf["close"].astype(float)
+            high = kdf["high"].astype(float)
+            low = kdf["low"].astype(float)
+            vol = kdf["volume"].astype(float)
+
+            cur = float(close.iloc[-1])
+
+            # 计算均线
+            ma5 = float(close.rolling(5, min_periods=3).mean().iloc[-1])
+            ma10 = float(close.rolling(10, min_periods=5).mean().iloc[-1])
+            ma20 = float(close.rolling(20, min_periods=10).mean().iloc[-1])
+            ma60 = float(close.rolling(60, min_periods=20).mean().iloc[-1]) if len(close) >= 60 else ma20
+
+            # 计算趋势
+            trend_5 = (cur - float(close.iloc[-6])) / float(close.iloc[-6]) * 100 if len(close) >= 6 else 0
+            trend_10 = (cur - float(close.iloc[-11])) / float(close.iloc[-11]) * 100 if len(close) >= 11 else 0
+            trend_20 = (cur - float(close.iloc[-21])) / float(close.iloc[-21]) * 100 if len(close) >= 21 else 0
+
+            # 计算回调深度（从20日高点）
+            peak_20 = float(high.iloc[-20:].max())
+            pullback_depth = (peak_20 - cur) / peak_20 * 100 if peak_20 > 0 else 0
+
+            # 量能分析
+            vol_5 = float(vol.iloc[-5:].mean())
+            vol_10 = float(vol.iloc[-10:-5].mean()) if len(vol) >= 10 else vol_5
+            vol_ratio = vol_5 / vol_10 if vol_10 > 0 else 1.0
+
+            # 60日位置
+            lb = min(len(close), 60)
+            high_60 = float(high.iloc[-lb:].max())
+            low_60 = float(low.iloc[-lb:].min())
+            rng = high_60 - low_60
+            position_pct = (cur - low_60) / rng * 100 if rng > 0 else 50
+
+            # 检查10日内是否有大跌（单日跌幅超过8%）
+            has_big_drop = False
+            max_drop_10 = 0
+            for i in range(min(10, len(close) - 1)):
+                idx = -(i + 1)
+                day_close = float(close.iloc[idx])
+                day_high = float(high.iloc[idx - 1]) if idx - 1 >= -len(close) else day_close
+                drop = (day_high - day_close) / day_high * 100
+                if drop > max_drop_10:
+                    max_drop_10 = drop
+                if drop > 8:
+                    has_big_drop = True
+
+            # 检查是否企稳（近3日低点不创新低）
+            stabilized = False
+            if len(close) >= 5:
+                recent_low = float(low.iloc[-3:].min())
+                prev_low = float(low.iloc[-5:-2].min())
+                stabilized = recent_low >= prev_low * 0.98
+
+            # 中期均线多头
+            midterm_bullish = ma20 > ma60 * 0.99
+
+            # 评分系统
+            score = 0
+            if 8 <= pullback_depth <= 20:
+                score += 35
+            elif 5 <= pullback_depth <= 25:
+                score += 25
+
+            if 2 <= trend_5 <= 15:
+                score += 20
+            elif trend_5 > 0:
+                score += 10
+
+            if 0.5 <= vol_ratio <= 0.85:
+                score += 15
+            elif 0.4 <= vol_ratio <= 1.0:
+                score += 10
+
+            if 30 <= position_pct <= 70:
+                score += 15
+            elif 20 <= position_pct <= 85:
+                score += 10
+
+            if midterm_bullish:
+                score += 15
+
+            if has_big_drop and stabilized:
+                score += 10
+            elif has_big_drop:
+                score += 5
+
+            if code in mainline_codes:
+                score += 10
+
+            if float(close.iloc[-1]) > float(close.iloc[-3]):
+                score += 5
+
+            if score >= 40:
+                candidates.append({
+                    "code": code,
+                    "name": name,
+                    "price": _safe_float(row[2]),
+                    "quote_change": _safe_float(row[3]),
+                    "score": score,
+                    "trend_5": trend_5,
+                    "trend_10": trend_10,
+                    "trend_20": trend_20,
+                    "pullback_depth": pullback_depth,
+                    "vol_ratio": vol_ratio,
+                    "position_pct": position_pct,
+                    "ma5": ma5,
+                    "ma10": ma10,
+                    "ma20": ma20,
+                    "ma60": ma60,
+                    "max_drop_10": max_drop_10,
+                    "has_big_drop": has_big_drop,
+                    "stabilized": stabilized,
+                    "midterm_bullish": midterm_bullish,
+                    "in_mainline": code in mainline_codes,
+                    "kdjk": _safe_float(row[4]),
+                    "kdjd": _safe_float(row[5]),
+                    "kdjj": _safe_float(row[6]),
+                    "rsi_6": _safe_float(row[7]),
+                    "cci": _safe_float(row[8]),
+                    "macdh": _safe_float(row[9]),
+                })
+
+        except Exception as e:
+            continue
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    print("[华盛昌风格] 最终选出:", len(candidates))
+    return candidates

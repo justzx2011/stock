@@ -22,6 +22,8 @@ class StockWebData:
                 self.url = "/stock/evening_report"
             elif table_name == "meishi_tech_summary":
                 self.url = "/stock/meishi_tech"
+            elif table_name == "hsc_style_summary":
+                self.url = "/stock/hsc_style"
             else:
                 self.url = "/stock/report?name=" + self.table_name
 
@@ -171,6 +173,20 @@ STOCK_WEB_DATA_LIST.append(
         type="3，定时任务",
         name="魅视科技式选股",
         table_name="meishi_tech_summary",
+        columns=['id', 'date', 'created_at'],
+        column_names=['ID', '日期', '创建时间'],
+        primary_key=['id'],
+        order_by=" date desc "
+    )
+)
+
+# 华盛昌风格选股
+STOCK_WEB_DATA_LIST.append(
+    StockWebData(
+        mode="report",
+        type="3，定时任务",
+        name="华盛昌风格选股",
+        table_name="hsc_style_summary",
         columns=['id', 'date', 'created_at'],
         column_names=['ID', '日期', '创建时间'],
         primary_key=['id'],

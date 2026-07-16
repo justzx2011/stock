@@ -16,6 +16,7 @@ import web.dataIndicatorsHandler as dataIndicatorsHandler
 import web.morningReportHandler as morningReportHandler
 import web.eveningReportHandler as eveningReportHandler
 import web.meishiTechReportHandler as meishiTechReportHandler
+import web.hscStyleReportHandler as hscStyleReportHandler
 import web.aiAgentHandler as aiAgentHandler
 import web.loginHandler as loginHandler
 import web.base as webBase
@@ -58,6 +59,11 @@ class Application(tornado.web.Application):
             (r"/stock/meishi_tech/api", meishiTechReportHandler.MeishiTechReportApiHandler),
             (r"/stock/meishi_tech/detail", meishiTechReportHandler.MeishiTechReportDetailHandler),
             (r"/stock/meishi_tech/generate", meishiTechReportHandler.MeishiTechReportGenerateHandler),
+            # 华盛昌风格选股。
+            (r"/stock/hsc_style", hscStyleReportHandler.HscStyleReportListHandler),
+            (r"/stock/hsc_style/api", hscStyleReportHandler.HscStyleReportApiHandler),
+            (r"/stock/hsc_style/detail", hscStyleReportHandler.HscStyleReportDetailHandler),
+            (r"/stock/hsc_style/generate", hscStyleReportHandler.HscStyleReportGenerateHandler),
             # AI 数据分析师。
             (r"/stock/ai_agent", aiAgentHandler.AiAgentPageHandler),
             (r"/stock/ai_agent/chat", aiAgentHandler.AiAgentChatHandler),

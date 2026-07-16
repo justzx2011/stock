@@ -1,0 +1,169 @@
+{% extends "layout/default.html" %}
+
+{% block main_content %}
+
+<h3 class="header smaller lighter blue">华盛昌风格选股</h3>
+
+<div class="row" style="margin-bottom: 15px;">
+    <div class="col-xs-12">
+        <button id="btn-generate" class="btn btn-success">
+            <i class="fa fa-refresh"></i> 生成选股
+        </button>
+        <button id="btn-latest" class="btn btn-primary">
+            <i class="fa fa-file-text-o"></i> 查看最新报告
+        </button>
+        <span id="generate-status" style="margin-left: 10px; color: #999;"></span>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-xs-12">
+        <table id="report-table" class="table table-striped table-bordered table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>日期</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+        </table>
+    </div>
+</div>
+
+<!-- 报告详情 Modal -->
+<div id="report-modal" class="modal fade">
+    <div class="modal-dialog" style="width: 950px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                <h3 id="report-title" class="smaller lighter blue">华盛昌风格选股</h3>
+            </div>
+            <div class="modal-body" id="report-body" style="max-height: 700px; overflow-y: auto;">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm" data-dismiss="modal">
+                    <i class="ace-icon fa fa-times"></i> 关闭
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+<script type="text/javascript">
+
+    // 查看报告详情
+    function viewReport(id) {
+        $('#report-body').html('<h5>数据加载中...请稍候.</h5>');
+        $('#report-modal').modal('show');
+
+        var url = '/stock/hsc_style/detail';
+        if (id) {
+            url += '?id=' + id;
+        }
+
+        $.ajax({
+            url: url,
+            type: 'GET',
+            dataType: 'json',
+            success: function(resp) {
+                if (resp.success && resp.data) {
+                    var content = resp.data.report_content;
+                    $('#report-title').text('华盛昌风格选股 - ' + resp.data.date);
+                    // 尝试用marked渲染，降级到pre标签
+                    try {
+                        if (typeof marked !== 'undefined') {
+                            $('#report-body').html(marked.parse(content));
+                        } else {
+                            $('#report-body').html('<pre style="white-space: pre-wrap; word-wrap: break-word;">' + escapeHtml(content) + '</pre>');
+                        }
+                    } catch(e) {
+                        $('#report-body').html('<pre style="white-space: pre-wrap; word-wrap: break-word;">' + escapeHtml(content) + '</pre>');
+                    }
+                } else {
+                    $('#report-body').html('<h5>未找到报告数据.</h5>');
+                }
+            },
+            error: function() {
+                $('#report-body').html('<h5>加载失败，请稍后重试.</h5>');
+            }
+        });
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    jQuery(function($) {
+
+        // DataTable
+        var myTable = $('#report-table').DataTable({
+            "select": true,
+            "bFilter": true,
+            "ordering": true,
+            "processing": true,
+            "serverSide": true,
+            "lengthMenu": [[10, 20, 50], [10, 20, 50]],
+            "language": {
+                "url": "/static/js/datatables.Chinese.json"
+            },
+            "ajax": "/stock/hsc_style/api",
+            "columns": [
+                { "data": "id" },
+                { "data": "date" },
+                { "data": "created_at" },
+                {
+                    "data": null,
+                    "orderable": false,
+                    "render": function(data, type, row) {
+                        return '<button class="btn btn-xs btn-info" onclick="viewReport(' + row.id + ')">' +
+                               '<i class="fa fa-eye"></i> 查看</button>';
+                    }
+                }
+            ]
+        });
+
+        // 生成选股按钮
+        $('#btn-generate').click(function() {
+            var btn = $(this);
+            btn.prop('disabled', true);
+            $('#generate-status').text('正在生成中，请稍候...').css('color', '#f0ad4e');
+
+            $.ajax({
+                url: '/stock/hsc_style/generate',
+                type: 'POST',
+                dataType: 'json',
+                success: function(resp) {
+                    if (resp.success) {
+                        $('#generate-status').text(resp.message).css('color', '#5cb85c');
+                        // 30秒后自动刷新列表
+                        setTimeout(function() {
+                            myTable.ajax.reload();
+                            $('#generate-status').text('');
+                        }, 30000);
+                    } else {
+                        $('#generate-status').text('生成失败: ' + resp.message).css('color', '#d9534f');
+                    }
+                },
+                error: function() {
+                    $('#generate-status').text('请求失败，请稍后重试.').css('color', '#d9534f');
+                },
+                complete: function() {
+                    btn.prop('disabled', false);
+                }
+            });
+        });
+
+        // 查看最新报告
+        $('#btn-latest').click(function() {
+            viewReport('');
+        });
+
+    });
+</script>
+{% end %}
